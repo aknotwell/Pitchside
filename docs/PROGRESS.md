@@ -638,3 +638,20 @@ Against typical match values:
 | Headers, share of shots | 20% | 17% |
 | Clearances per match | 35 | 40 |
 | Shots from outside the box | 37% | 38% |
+
+## Checkpoint 15: live pipeline verified against the engine (2026-10-09)
+
+- **Method:** the engine is deterministic, so a live cloud match can be checked event for
+  event by re-simulating its seed offline.
+- **Bug found (PR #26):** two of three live matches showed about half their passes and a
+  missing goal. When KEDA scaling or a redeploy moved an Event Hubs partition between
+  interpreter replicas, a replica that later re-claimed it kept stale in-memory state. It
+  resumed from the newer checkpoint, lost everything processed in between, and overwrote
+  the state doc.
+- **Fix:** drop in-memory state for a partition's matches on release or claim, then reload
+  the latest snapshot. A regression test was added.
+- **Verified:** three full-length matches at 6×, with the interpreter **restarted
+  mid-match** so every partition changed hands. Live pass counts equal the offline
+  re-simulation exactly in all three (928, 899 and 955). Averages: 27 shots, 832
+  open-play passes (real 804) and about 81% completion. One match finished 2–6, a
+  high-scoring outlier; across 64 matches the average is 2.7 goals.
