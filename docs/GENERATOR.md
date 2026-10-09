@@ -56,7 +56,7 @@ Some behaviour couldn't be made realistic from spatial rules alone within the ti
 ### 3. Outcomes are decided when an action starts
 A pass's success, an interception point or a shot's result is rolled when the ball is played, then the flight plays out. A completed pass "homes" onto the receiver as they move.
 - **Gained:** simple, consistent events.
-- **Given up:** passes can bend slightly mid-flight, and each event already contains its outcome at its start time `t`. **Anything replaying events "live" must release an event at `t + duration`**, otherwise it leaks the future (e.g. a goal shown as the shot is struck).
+- **Given up:** passes can bend slightly mid-flight, and each event already contains its outcome at its start time `t`. **Anything replaying events "live" must release an event at `t + duration`**, otherwise it leaks the future (e.g. a goal shown as the shot is struck). `pitchside.live.LiveFeed` does this: it steps the simulation with `MatchSim.steps()` and holds each event back until it has finished.
 
 ### 4. Scripted scenarios override natural goals
 When a scenario scripts goals, any other shot that would have gone in becomes a save, so the scoreline matches the script exactly.
