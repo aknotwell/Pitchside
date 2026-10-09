@@ -2,7 +2,7 @@ import pytest
 
 from pitchside.generator import MatchSim, build_team, generate_match
 from pitchside.live import LiveFeed
-from pitchside.schemas import TrackingFrame
+from pitchside.schemas import LiveMeta, LiveTick, TrackingFrame
 
 SHORT = 4.0  # minutes per half
 
@@ -88,9 +88,10 @@ def test_server_streams_meta_then_frames():
         assert first["meta"]["scenario"] == {"name": "open"}
         assert first["meta"]["home"]["id"] == "ashenford"
         frames = [ws.receive_json() for _ in range(5)]
-    assert all(f["type"] == "frame" for f in frames)
+    LiveMeta.model_validate(first)
+    for f in frames:
+        LiveTick.model_validate(f)
     assert frames[-1]["frame"]["t"] > frames[0]["frame"]["t"]
-    TrackingFrame.model_validate(frames[-1]["frame"])
 
 
 @pytest.mark.parametrize(

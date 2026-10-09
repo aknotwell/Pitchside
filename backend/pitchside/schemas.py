@@ -157,3 +157,27 @@ class ViewerProfile(BaseModel):
     fav_club: str | None = None
     fav_player: str | None = None
     focus_metric: str | None = None
+
+
+# Live stream (`pitchside.live.server`, WebSocket /ws/match), mirrored in frontend/src/types.ts
+
+
+class LiveFrame(TrackingFrame):
+    clock: str = Field(description="Broadcast clock at this frame")
+
+
+class LiveMeta(BaseModel):
+    type: Literal["meta"]
+    meta: MatchMeta = Field(description="No final score, and only the scenario's name")
+
+
+class LiveTick(BaseModel):
+    type: Literal["frame"]
+    frame: LiveFrame
+    events: list[Event] = Field(description="Events that finished since the last tick")
+    score: dict[Side, int]
+
+
+class LiveEnd(BaseModel):
+    type: Literal["end"]
+    score: dict[Side, int]

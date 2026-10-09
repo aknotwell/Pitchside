@@ -2,7 +2,7 @@ SEED ?= 42
 HOME_CLUB ?= ashenford
 AWAY_CLUB ?= greywater
 
-.PHONY: setup gen batch tune live test lint fmt
+.PHONY: setup gen batch tune live viewer test lint fmt
 
 setup:
 	cd backend && uv sync
@@ -20,6 +20,10 @@ tune:
 # Stream live matches over WebSocket at ws://127.0.0.1:8000/ws/match
 live:
 	cd backend && uv run pitchside-live
+
+# Live pitch viewer at http://localhost:5173 (run `make live` in another terminal)
+viewer:
+	cd frontend && ([ -d node_modules ] || npm ci) && npm run dev
 
 test:
 	cd backend && uv run pytest -q
