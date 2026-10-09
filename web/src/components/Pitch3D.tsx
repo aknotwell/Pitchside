@@ -162,12 +162,12 @@ function kitFor(meta: MatchMeta, team: "h" | "a", pid: string): Kit {
            hair: HAIR[(h >> 3) % HAIR.length], keeper, leftFooted: p?.foot === "L" };
 }
 
-export default function Pitch3D({ sample, meta, follow, camMode }: {
-  sample: () => Frame | null; meta?: MatchMeta | null; follow?: string | null; camMode: CamMode;
+export default function Pitch3D({ sample, meta, follow, camMode, paused = false }: {
+  sample: () => Frame | null; meta?: MatchMeta | null; follow?: string | null; camMode: CamMode; paused?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
-  const props = useRef({ sample, meta, follow, camMode });
-  props.current = { sample, meta, follow, camMode };
+  const props = useRef({ sample, meta, follow, camMode, paused });
+  props.current = { sample, meta, follow, camMode, paused };
 
   useEffect(() => {
     const el = host.current!;
@@ -240,14 +240,17 @@ export default function Pitch3D({ sample, meta, follow, camMode }: {
     resize();
 
     let last = performance.now();
+    let lastT = NaN;  // match time of the last frame the athletes were posed for
     let raf = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const now = performance.now();
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
-      const { sample: sampleNow, meta: m, follow: fid, camMode: mode } = props.current;
+      const { sample: sampleNow, meta: m, follow: fid, camMode: mode, paused } = props.current;
       const f = sampleNow();
+      // Paused on the same frame: hold every pose (no idling, turning or kicks); cameras keep running.
+      const frozen = paused && f !== null && f.t_s === lastT;
 
       if (m && stadiumFor !== m.match_id) {  // crowd in the clubs' colours
         if (stands) scene.remove(stands);
@@ -262,7 +265,8 @@ export default function Pitch3D({ sample, meta, follow, camMode }: {
         builtFor = m.match_id;
       }
       const bx = f ? toX(f.ball[0]) : 0, bz = f ? toZ(f.ball[1]) : 0;
-      if (f && m) {
+      if (f && m && !frozen) {
+        lastT = f.t_s;
         const seen = new Set<string>();
         // Who has the ball, and are they holding someone off?
         const bz0 = f.ball[2] ?? 0;

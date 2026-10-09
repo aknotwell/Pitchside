@@ -59,16 +59,32 @@ function Main({ params }: { params: URLSearchParams }) {
   const [replays, setReplays] = useState<Awaited<ReturnType<typeof api.replays>>["replays"]>([]);
   const [replayId, setReplayId] = useState<string | null>(params.get("replay"));
   const [replaySpeed, setReplaySpeed] = useState(4);
+  const [replayPaused, setReplayPaused] = useState(false);
   const [finalState, setFinalState] = useState<MatchState | null>(null);
   const liveFeed = useLiveMatch(replayId ? null : matchId, persona, lang);
-  const replayFeed = useReplay(replayId, persona, lang, replaySpeed, finalState);
+  const replayFeed = useReplay(replayId, persona, lang, replaySpeed, finalState, replayPaused);
   const live = replayId ? replayFeed : liveFeed;
+  const paused = !!replayId && replayPaused;
 
   useEffect(() => {
     api.replays().then((r) => setReplays(r.replays)).catch(() => {});
   }, []);
   useEffect(() => {
     if (replayId) api.match(replayId).then(setFinalState).catch(() => setFinalState(null));
+  }, [replayId]);
+
+  // Space toggles replay pause, unless focus is on something that uses Space itself
+  // (the Ask box, buttons, links, the recap audio player).
+  useEffect(() => {
+    if (!replayId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== " " || e.repeat || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing || e.defaultPrevented) return;
+      if (e.target instanceof Element && e.target.closest("input,textarea,select,button,a[href],audio,video,[contenteditable]")) return;
+      e.preventDefault();
+      setReplayPaused((p) => !p);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [replayId]);
 
   useEffect(() => {
@@ -93,7 +109,7 @@ function Main({ params }: { params: URLSearchParams }) {
       <header>
         <h1>MatchLens <small>live explain layer</small></h1>
         <select aria-label="Match" value={replayId ? `replay:${replayId}` : matchId ?? ""}
-                onChange={(e) => { const v = e.target.value; if (v.startsWith("replay:")) { setReplayId(v.slice(7)); } else { setReplayId(null); setMatchId(v || null); } }}>
+                onChange={(e) => { const v = e.target.value; if (v.startsWith("replay:")) { setReplayId(v.slice(7)); setReplayPaused(false); } else { setReplayId(null); setMatchId(v || null); } }}>
           {matches.length === 0 && <option value="">No matches yet</option>}
           <optgroup label="Live and recent">
             {matches.map((m) => (
@@ -107,9 +123,14 @@ function Main({ params }: { params: URLSearchParams }) {
           )}
         </select>
         {replayId && (
-          <select aria-label="Replay speed" value={replaySpeed} onChange={(e) => setReplaySpeed(Number(e.target.value))}>
-            {[1, 4, 10, 20].map((s) => <option key={s} value={s}>{s}× replay</option>)}
-          </select>
+          <>
+            <select aria-label="Replay speed" value={replaySpeed} onChange={(e) => setReplaySpeed(Number(e.target.value))}>
+              {[1, 4, 10, 20].map((s) => <option key={s} value={s}>{s}× replay</option>)}
+            </select>
+            <button aria-label={replayPaused ? "Play replay" : "Pause replay"} title="Space" onClick={() => setReplayPaused((p) => !p)}>
+              {replayPaused ? <><span aria-hidden="true">▶</span> Play</> : <><span aria-hidden="true">❚❚</span> Pause</>}
+            </button>
+          </>
         )}
         <div className="seg" role="group" aria-label="Viewer">
           {(["casual", "analyst"] as Persona[]).map((p) => (
@@ -122,10 +143,10 @@ function Main({ params }: { params: URLSearchParams }) {
       </header>
       <main>
         <section className={view === "3d" ? "stage three" : "stage"}>
-          <Scoreboard state={live.state} delay={replayId ? 0 : BROADCAST_DELAY_S} connected={live.connected} replay={!!replayId} />
+          <Scoreboard state={live.state} delay={replayId ? 0 : BROADCAST_DELAY_S} connected={live.connected} replay={!!replayId} paused={paused} />
           {view === "3d" ? (
             <Suspense fallback={<Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} follow={follow} />}>
-              <Pitch3D sample={live.sample} meta={live.state?.meta} follow={follow} camMode={cam} />
+              <Pitch3D sample={live.sample} meta={live.state?.meta} follow={follow} camMode={cam} paused={paused} />
             </Suspense>
           ) : (
             <Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} follow={follow} />

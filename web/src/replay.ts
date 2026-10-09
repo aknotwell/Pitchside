@@ -19,8 +19,12 @@ function team(meta: MatchMeta, side: "home" | "away", goals: number): TeamSummar
 }
 
 /** Plays a packaged replay with the same rendering contract as the live hook. */
-export function useReplay(matchId: string | null, persona: Persona, lang: Lang, speed: number, finalState: MatchState | null): Live {
+export function useReplay(matchId: string | null, persona: Persona, lang: Lang, speed: number, finalState: MatchState | null, paused: boolean): Live {
   const pkg = useRef<ReplayPackage | null>(null);
+  // Playback clock: wall time that stands still while paused. Pausing must not restart the replay,
+  // so it lives here rather than in the playback effect's dependencies.
+  const vclock = useRef<{ offset: number; pausedAt: number | null }>({ offset: 0, pausedAt: null });
+  const vt = (now: number) => (vclock.current.pausedAt ?? now) - vclock.current.offset;
   const start = useRef<{ wall: number; t0: number }>({ wall: 0, t0: 0 });
   const shownAt = useRef<Map<string, number>>(new Map());
   const finalRef = useRef<MatchState | null>(finalState);
@@ -29,6 +33,13 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
   const sampler = useRef<() => Frame | null>(() => null);
   const sample = useRef(() => sampler.current()).current;
   const [live, setLive] = useState<Live>({ connected: false, playhead: 0, liveEdge: 0, frame: null, state: null, cues: [], history: [], speed, sample });
+
+  useEffect(() => {  // idempotent: StrictMode and Fast Refresh re-run effects
+    const now = performance.now() / 1000;
+    const c = vclock.current;
+    if (paused && c.pausedAt === null) c.pausedAt = now;
+    else if (!paused && c.pausedAt !== null) { c.offset += now - c.pausedAt; c.pausedAt = null; }
+  }, [paused]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -42,12 +53,13 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
         t_s: t, ball: [bx, by, bz ?? 0] as [number, number, number],
         players: p.playerIds.flatMap((id, j) => (pl[j] ? [{ id, x: pl[j]![0], y: pl[j]![1] }] : [])),
       }));
-      start.current = { wall: performance.now() / 1000, t0: p.frames[0]?.[0] ?? 0 };
+      start.current = { wall: vt(performance.now() / 1000), t0: p.frames[0]?.[0] ?? 0 };
       setLive((l) => ({ ...l, connected: true }));
     }).catch((e) => console.warn("replay load failed", e));
-    const playheadAt = (now: number) => {
+    const playheadAt = (wall: number) => {
       const p = pkg.current;
       if (!p || !p.frames.length) return null;
+      const now = vt(wall);
       const end = p.frames[p.frames.length - 1][0];
       let playhead = start.current.t0 + (now - start.current.wall) * speed;
       if (playhead > end + 20) { start.current = { wall: now, t0: p.frames[0][0] }; shownAt.current = new Map(); playhead = p.frames[0][0]; }
@@ -66,8 +78,8 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       last = nowMs;
       const p = pkg.current;
       if (!p || !p.frames.length) return;
-      const now = nowMs / 1000;
-      const playhead = playheadAt(now)!;
+      const playhead = playheadAt(nowMs / 1000)!;
+      const now = vt(nowMs / 1000);  // cue lifetimes stand still while paused
       const frame = sampleFrames(frames.current, playhead)!;
       // scoreboard from events
       let h = 0, aw = 0, clock = "00:00", period = 1;
