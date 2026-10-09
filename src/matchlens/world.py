@@ -61,7 +61,7 @@ def make_team(rng: random.Random, team_id: str, club: tuple[str, str, str], form
             if full not in used:
                 used.add(full)
                 break
-        number = 1 if pos == "GK" else 2 + i if i < 11 else 12 + i
+        number = i + 1 if i < 11 else 12 + (i - 11)
         players.append(Player(id=f"{team_id}{i + 1}", name=full, number=number, position=pos, team_id=team_id))
     return Team(id=team_id, name=name, short=short, color=color, formation=formation, players=players)
 

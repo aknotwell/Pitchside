@@ -524,6 +524,8 @@ class MatchInterpreter:
         if batch.frames:
             self.clock = max(self.clock, batch.frames[-1].t_s)
         for pid, mps, t in tagged:
+            if self.players[pid].distance_m < 300:
+                continue  # ignore the first moves of a match (players jogging into position)
             if not self._cooldown(f"speed_{pid}", 600) or not self._cooldown("speed_any", 90):
                 continue
             name = self.names.get(pid, pid)
