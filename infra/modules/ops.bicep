@@ -124,3 +124,19 @@ resource logicCanRunJob 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 
 output keepLiveName string = keepLiveApp.name
+
+@description('Log Analytics workspace id the SLO workbook queries.')
+param workspaceId string = ''
+
+resource slo 'Microsoft.Insights/workbooks@2023-06-01' = if (!empty(workspaceId)) {
+  name: guid(resourceGroup().id, 'matchlens-slo')
+  location: location
+  tags: tags
+  kind: 'shared'
+  properties: {
+    displayName: 'MatchLens: live SLOs'
+    category: 'workbook'
+    sourceId: workspaceId
+    serializedData: replace(loadTextContent('../workbooks/slo.json'), '{workspace}', workspaceId)
+  }
+}

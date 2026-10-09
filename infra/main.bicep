@@ -294,6 +294,7 @@ module ops 'modules/ops.bicep' = {
     simulatorJobId: aca.outputs.simulatorJobId
     alertEmail: alertEmail
     keepLive: demoMode
+    workspaceId: monitoring.outputs.logAnalyticsId
   }
 }
 

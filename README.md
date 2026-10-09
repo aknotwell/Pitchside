@@ -104,8 +104,11 @@ flowchart LR
   keyless OIDC deploy workflow is included.
 - **Observable.** OpenTelemetry flows to Application Insights (Entra-auth).
   Every cue carries the `trace_id` of the simulator second that caused it.
-  There is a multi-region availability test with an alert, and SLO queries
-  are in [`docs/kql/slo.kql`](docs/kql/slo.kql).
+  There is a multi-region availability test with an alert, and an
+  **Azure Monitor workbook "MatchLens: live SLOs"** deployed as code
+  ([`infra/workbooks/slo.json`](infra/workbooks/slo.json)). It shows event →
+  screen latency percentiles, replicas per service, agent/fallback/resume
+  outcomes, model failures, resilience events and replays.
 - **Guarded for a public demo.** Per-client rate limits, a global question
   budget, and caps on agent tool calls, round trips and wall time
   (`FunctionInvocationConfiguration`).

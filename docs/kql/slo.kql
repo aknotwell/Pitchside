@@ -12,7 +12,7 @@ AppTraces
 | parse Message with "moment " moment " (" kind "): " cues:int " cues via " source " in " ms:long " ms" rest
 | summarize moments = count(), p50_ms = percentile(ms, 50), p95_ms = percentile(ms, 95),
             agent = countif(source == "agent"), fallback = countif(source == "fallback"),
-            resumed = countif(rest has "resumed") by kind;
+            resumed = countif(rest has "resumed") by mkind;
 
 // 3. Fallback rate (SLO: < 10%)
 AppTraces
