@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 DEFAULT_PARAMS: dict[str, Any] = {
@@ -53,6 +54,10 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "max_accel_mps2": 4.2,
     "steer_gain": 1.1,
     "run_prob_per_s": 0.06,
+    "drift_m": 0.0,  # off-ball positional wander (Ornstein-Uhlenbeck amplitude, metres)
+    "drift_tau_s": 8.0,
+    "jog_max_mps": 9.5,  # hand-set default keeps the old behaviour (no separate jog cap)
+    "urgent_min_gap_m": 1e9,
     # Team strength and scripted stories
     "strength_sd": 0.03,
     "script": [
@@ -67,8 +72,21 @@ def params_version(params: dict[str, Any]) -> str:
     return f"{params.get('version', 'p')}-{hashlib.sha256(blob).hexdigest()[:10]}"
 
 
-def load_params(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+FITTED_PATH = Path(__file__).with_name("fitted_params.json")
+
+
+def fitted_params() -> dict[str, Any] | None:
+    """Parameters fitted by ``python -m matchlens.calibrate.fit`` (aggregates only, safe to commit)."""
+    if not FITTED_PATH.exists():
+        return None
+    return json.loads(FITTED_PATH.read_text())["params"]
+
+
+def load_params(overrides: dict[str, Any] | None = None, calibrated: bool = True) -> dict[str, Any]:
     params = deepcopy(DEFAULT_PARAMS)
+    fitted = fitted_params() if calibrated else None
+    if fitted:
+        params.update({k: v for k, v in fitted.items() if k != "script"})
     if overrides:
         params.update(overrides)
     return params

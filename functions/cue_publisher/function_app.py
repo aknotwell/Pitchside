@@ -6,6 +6,7 @@ Every cue, template or agent-written, reaches browsers through this one event-dr
 
 import logging
 import os
+import time
 
 import azure.functions as func
 from azure.identity import ManagedIdentityCredential
@@ -36,6 +37,10 @@ def cue_publisher(docs: func.DocumentList) -> None:
         try:
             client().send_to_group(group, {"type": "cue", "cue": cue}, content_type="application/json")
             sent += 1
+            enq = (cue.get("data") or {}).get("enqueuedAtMs")
+            if enq:  # server-side SLO signal: event enqueued -> cue pushed to Web PubSub
+                logging.info("cue_published match=%s source=%s template=%s latency_ms=%d",
+                             cue["matchId"], cue.get("source"), cue.get("template"), time.time() * 1000 - enq)
         except Exception as exc:  # one bad cue must not block the feed
             logging.warning("publish failed for %s: %s", cue.get("id"), exc)
     logging.info("published %d/%d cues", sent, len(docs))

@@ -587,6 +587,9 @@ class MatchEngine:
         seg_i = 0
         cur = segs[0]
         runs: dict[str, float] = {}
+        drift = np.zeros((P, 2))
+        tau = max(0.5, float(p.get("drift_tau_s", 8.0)))
+        drift_sd = float(p.get("drift_m", 0.0)) * math.sqrt(2 * dt / tau)
 
         for k in range(T):
             t = ts[k]
@@ -604,6 +607,8 @@ class MatchEngine:
                 seg_i += 1
                 cur = segs[seg_i]
             bx, by = ball[k, 0], ball[k, 1]
+            if drift_sd:
+                drift += -drift * (dt / tau) + rng.normal(0, drift_sd, (P, 2))
             for tid in TEAMS:
                 in_poss = cur.team == tid
                 bxa, bya = to_att(tid, bx, by)
@@ -616,19 +621,26 @@ class MatchEngine:
                             tx = min(44.0, tx + 14.0)
                         elif rng.random() < p["run_prob_per_s"] * dt:
                             runs[pid] = t + rng.uniform(2.0, 4.5)
-                    tgt = np.array(to_abs(tid, tx, ty))
+                    tgt = np.array(to_abs(tid, tx, ty)) + drift[i]
+                    urgent = pid in runs and runs[pid] > t  # attacking run: full speed
                     if pid == cur.carrier:
                         tgt = np.array([bx, by]) - np.array([SIGN[tid] * 0.6, 0.0])
                     elif pid == cur.receiver and cur.receiver_target is not None:
                         tgt = np.array(to_abs(tid, *cur.receiver_target))
                     elif pid == cur.presser:
                         tgt = np.array([bx, by]) + np.array([SIGN[tid] * 1.2, 0.0])
+                        urgent = True
                     if np.isnan(pos[i][0]):
                         pos[i] = tgt
-                    desired = (tgt - pos[i]) * p["steer_gain"]
-                    sp = np.linalg.norm(desired)
-                    if sp > vmax[i]:
-                        desired *= vmax[i] / sp
+                    gap = tgt - pos[i]
+                    gap_d = float(np.linalg.norm(gap))
+                    if urgent and gap_d > p.get("urgent_min_gap_m", 8.0):
+                        desired = gap / gap_d * vmax[i]  # sprint
+                    else:
+                        desired = gap * p["steer_gain"]
+                        sp = np.linalg.norm(desired)
+                        if sp > p.get("jog_max_mps", 5.5):  # non-urgent movement tops out at a run
+                            desired *= p.get("jog_max_mps", 5.5) / sp
                     dv = desired - vel[i]
                     a = np.linalg.norm(dv)
                     amax = p["max_accel_mps2"] * dt

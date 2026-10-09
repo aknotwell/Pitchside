@@ -15,6 +15,28 @@ Status: design, 2026-10-08; corrected against [INFRA-RESEARCH.md](INFRA-RESEARCH
 - **[E]**: an estimate or unverified. Check before relying on it, especially
   prices and model availability.
 
+## As built (2026-10-09)
+
+The system described below is deployed. See the [README](../README.md),
+[PROGRESS.md](PROGRESS.md) and [REALISM.md](REALISM.md). The build differs
+from this design in these ways:
+
+- **One Event Hub, `match-stream`**, carries both events and tracking (keyed
+  by match), instead of `match-events` + `match-tracking`. This keeps a match
+  ordered on one consumer.
+- **Web PubSub plain WebSockets** (JSON), not Socket.IO. The interpreter sends
+  live frames and state as 1 Hz "ticks"; cues come from the Functions change-feed
+  publisher.
+- **Functions app** hosts both the cue publisher and the MCP server.
+- **Key Vault** holds the MCP extension key (the only non-Entra secret).
+- **Logic App keep-live** replaces the recap-distribution Logic App for now.
+- **Not built yet:** Fabric RTI, Event Grid lifecycle topic, Azure Speech,
+  Translator, Foundry hosted agent, Foundry evaluation gate in CI, Azure Load
+  Testing (the load test is `scripts/loadtest.py`), Chaos Studio broker
+  faults.
+- **Models:** `gpt-5-mini` (primary) and `gpt-4.1-mini` (fallback and Ask),
+  limited by free-trial quota.
+
 ## 0. Decisions at a glance
 
 | Decision | Choice | Why |

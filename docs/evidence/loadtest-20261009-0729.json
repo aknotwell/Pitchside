@@ -1,0 +1,147 @@
+{
+ "at": "2026-10-09T07:29:55Z",
+ "matches": 10,
+ "speed": 6.0,
+ "period_min": 10.0,
+ "watched": 4,
+ "peak_replicas": {
+  "interpreter": 4,
+  "storyteller": 3
+ },
+ "latency": {
+  "template (hot path)": {
+   "n": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "max_ms": null,
+   "mean_ms": null
+  },
+  "agent (warm/cold path)": {
+   "n": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "max_ms": null,
+   "mean_ms": null
+  },
+  "fallback": {
+   "n": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "max_ms": null,
+   "mean_ms": null
+  }
+ },
+ "samples": [
+  {
+   "t_s": 28,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 44,
+   "interpreter": 4,
+   "storyteller": 2
+  },
+  {
+   "t_s": 60,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 76,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 93,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 109,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 125,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 141,
+   "interpreter": 4,
+   "storyteller": 2
+  },
+  {
+   "t_s": 157,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 173,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 190,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 206,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 222,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 238,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 254,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 271,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 287,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 303,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 319,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 335,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 352,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 368,
+   "interpreter": 4,
+   "storyteller": 3
+  }
+ ],
+ "cues": []
+}

@@ -95,6 +95,27 @@ def interpreter_lag(eh_fqdn: str, blob_endpoint: str) -> int:
     return lag
 
 
+def server_latency(match_ids: list[str]) -> list[dict]:
+    ws = sh("az", "resource", "show", "-g", azd("AZURE_RESOURCE_GROUP"), "-n", _workspace_name(),
+            "--resource-type", "Microsoft.OperationalInsights/workspaces", "--query", "properties.customerId", "-o", "tsv")
+    ids = ", ".join(f'"{m}"' for m in match_ids)
+    q = ("AppTraces | where Message startswith 'cue_published' "
+         "| parse Message with 'cue_published match=' match ' source=' source ' template=' template ' latency_ms=' ms:long "
+         f"| where match in ({ids}) "
+         "| summarize n=count(), p50=percentile(ms, 50), p95=percentile(ms, 95), p99=percentile(ms, 99) by source")
+    body = json.dumps({"query": q})
+    out = sh("az", "rest", "--method", "post", "--url", f"https://api.loganalytics.io/v1/workspaces/{ws}/query",
+             "--resource", "https://api.loganalytics.io", "--body", body)
+    rows = json.loads(out)["tables"][0]["rows"]
+    return [{"source": r[0], "n": r[1], "p50": round(r[2]), "p95": round(r[3]), "p99": round(r[4])} for r in rows]
+
+
+def _workspace_name() -> str:
+    rg = azd("AZURE_RESOURCE_GROUP")
+    return sh("az", "resource", "list", "-g", rg, "--resource-type", "Microsoft.OperationalInsights/workspaces",
+              "--query", "[0].name", "-o", "tsv")
+
+
 def pct(xs: list[float], p: float) -> float:
     if not xs:
         return float("nan")
@@ -153,6 +174,11 @@ def main() -> None:
 
     asyncio.run(asyncio.wait_for(run(), timeout=duration + 120))
 
+    # Server-side latency (event enqueued -> cue pushed by the Function), from Log Analytics.
+    print("waiting 150 s for telemetry ingestion…")
+    time.sleep(150)
+    server = server_latency(match_ids)
+
     def summary(sel):
         xs = [c["latency_ms"] for c in cues if sel(c)]
         if not xs:
@@ -169,6 +195,7 @@ def main() -> None:
                     "agent (warm/cold path)": summary(lambda c: c["source"] == "agent"),
                     "fallback": summary(lambda c: c["source"] == "fallback")},
         "samples": samples,
+        "server_latency": server,
     }
     out = Path("docs/evidence")
     out.mkdir(parents=True, exist_ok=True)
@@ -180,7 +207,11 @@ def main() -> None:
           "| Path | Cues | p50 | p95 | max |", "|---|---|---|---|---|"]
     for k, v in report["latency"].items():
         md.append(f"| {k} | {v['n']} | {v['p50_ms']} ms | {v['p95_ms']} ms | {v['max_ms']} ms |")
-    md += ["", "Latency = WebSocket receive time − Event Hubs enqueue time of the triggering event.", "",
+    md += ["", "Latency = WebSocket receive time − Event Hubs enqueue time of the triggering event (client side).", "",
+           "**Server side** (Event Hubs enqueue → cue pushed to Web PubSub by the Function, all matches):", "",
+           "| Source | Cues | p50 | p95 | p99 |", "|---|---|---|---|---|"]
+    md += [f"| {r['source']} | {r['n']} | {r['p50']} ms | {r['p95']} ms | {r['p99']} ms |" for r in server]
+    md += ["",
            "| t (s) | interpreter | storyteller |", "|---|---|---|"]
     md += [f"| {s['t_s']} | {s['interpreter']} | {s['storyteller']} |" for s in samples]
     (out / f"loadtest-{stamp}.md").write_text("\n".join(md) + "\n")

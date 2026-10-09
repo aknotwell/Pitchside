@@ -131,7 +131,7 @@ module storyteller 'containerapp.bicep' = {
           metadata: {
             namespace: serviceBusName
             queueName: 'moments'
-            messageCount: '3'
+            messageCount: '1'
           }
         }
       }

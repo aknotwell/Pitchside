@@ -173,3 +173,67 @@ The run shows as "resumed" in the producer console.
   project-level `predeploy` hook.
 - Speed tags fired at kick-off.
 - Shirt numbers had a gap.
+
+## Checkpoint 4: scale evidence, MCP, Ask the match, operations, calibration (2026-10-09)
+
+### New in the cloud
+
+- **Match-data MCP server on Azure Functions.** Four MCP tool triggers
+  (`list_matches`, `get_match_state`, `get_moments`, `get_overlays`) at
+  `/runtime/webhooks/mcp`. Verified with raw JSON-RPC calls (`initialize`,
+  `tools/list`, `tools/call`). `.vscode/mcp.json` wires it and the Azure MCP
+  Server into GitHub Copilot agent mode.
+- **Ask the match** (`POST /api/ask`, plus an "Ask" tab in the web app).
+  - An Agent Framework agent (`gpt-4.1-mini`) answers through the MCP server
+    using MAF's `MCPStreamableHTTPTool`.
+  - Caps per answer: `max_function_calls 6`, `max_iterations 4`, 30 s, and
+    600 output tokens.
+  - Rate limits: 6 questions/min per client and 300/hour overall.
+  - The MCP key is in **Key Vault**; the API reads it with its managed
+    identity, and the postdeploy hook writes it.
+- **Operations** (`infra/modules/ops.bicep`):
+  - A multi-region availability test on `/api/health`, with a metric alert
+    emailing `vmoose@outlook.com`.
+  - A Logic App, **keep-live**, that starts a match every 10 minutes if none is
+    live (managed identity → ARM). It is **disabled** unless `DEMO_MODE=true`.
+- **Web PubSub upgraded to Standard_S1** (~$1.61/day). Free allows
+  20K messages/day and saturated during load tests.
+- **SLO queries** in `docs/kql/slo.kql`.
+
+### Load test: 10 simultaneous matches at 6× (`scripts/loadtest.py`)
+
+Evidence is in `docs/evidence/loadtest-20261009-0742.*`.
+
+- **KEDA:** interpreter 1 → 4 replicas (Event Hubs lag); storyteller 0 → 4
+  (Service Bus depth).
+- **Server side** (Event Hubs enqueue → cue pushed to Web PubSub, 281 cues):
+
+  | Path | p50 | p95 |
+  |---|---|---|
+  | Template (hot path) | **202 ms** | **364 ms** |
+  | Agent | **10.2 s** | 58 s |
+
+- **Client side** (2 watched matches): template p50 235 ms, p95 386 ms.
+
+The agent tail is queueing while the storyteller cold-starts from zero. Demo
+mode keeps one warm replica, and KEDA now scales on 1 message per replica
+instead of 3.
+
+**Bugs found by load testing (all fixed):**
+
+1. The `az containerapp job start --env-vars` override **replaces** the job's
+   env, so executions lost their config. Fix: start executions through ARM
+   with the env merged.
+2. Cue upserts replayed after a partition handover re-fired the change feed.
+   Fix: cues are immutable and written with `create_item`; a 409 is a no-op.
+3. The interpreter awaited Web PubSub publishes, and a saturated Web PubSub
+   throttled the whole stream. Fix: bounded fire-and-forget ticks, coalesced
+   to 1 Hz per match.
+4. **An exception escaping `on_event_batch` silently stalled a partition**:
+   ownership was still renewed, but nothing was consumed for 14 minutes. Fix:
+   the batch handler never raises; added `on_error` and partition logs;
+   consumers close on SIGTERM so ownership is released; ownership expiry
+   shortened to 20 s.
+5. Watchers on my home network timed out on the WebSocket handshake while
+   Web PubSub showed no connection attempts. Fix: latency is now measured
+   server side, from the Function, as well.
