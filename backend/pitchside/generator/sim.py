@@ -16,7 +16,7 @@ and every speed can be recovered from the tracking data.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -323,6 +323,16 @@ class MatchSim:
     # ------------------------------------------------------------------ main loop
 
     def run(self) -> MatchSim:
+        for _ in self.steps():
+            pass
+        return self
+
+    def steps(self) -> Iterator[int]:
+        """Simulate the match one frame at a time, yielding each recorded frame's index.
+
+        `run()` drains this in one go; the live server steps it at match speed. While
+        paused at a yield, `self.t` is the time of the frame just recorded.
+        """
         stoppage = [int(self.rng.integers(1, 5)), int(self.rng.integers(3, 8))]
         for period in (1, 2):
             self._start_period(period)
@@ -330,12 +340,12 @@ class MatchSim:
             while self.t < end_t:
                 self._step()
                 self._record()
+                yield len(self._rec_t) - 1
                 self.frame += 1
                 self.t = self.frame * DT
             self._event(
                 "period", outcome="end", score={"home": self.score[0], "away": self.score[1]}
             )
-        return self
 
     def _start_period(self, period: int) -> None:
         self.period = period
