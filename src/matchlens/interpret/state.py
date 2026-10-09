@@ -106,6 +106,7 @@ class Output:
     moments: list[Moment] = field(default_factory=list)
     state: dict[str, Any] | None = None
     frames: dict[str, Any] | None = None
+    lifecycle: list[tuple[str, dict[str, Any]]] = field(default_factory=list)  # (event type, data)
 
 
 class MatchInterpreter:
@@ -139,8 +140,11 @@ class MatchInterpreter:
     def handle(self, msg: StreamMessage) -> Output:
         out = Output()
         if msg.kind == "metadata":
+            first = self.meta is None
             self._on_metadata(MatchMetadata.model_validate(msg.payload))
             out.state = self.state_doc()
+            if first:
+                out.lifecycle.append(("MatchStarted", self._lifecycle_data()))
         elif msg.kind == "event":
             ev = MatchEvent.model_validate(msg.payload)
             if ev.event_id in self.seen:
@@ -187,6 +191,13 @@ class MatchInterpreter:
         """0 = controlled, 1 = chaotic, from the turnover rate over the last 5 minutes."""
         tpm = self.window_stats("h", 300)["turnovers_per_min"]
         return r2(max(0.0, min(1.0, (tpm - 1.0) / 2.5)))
+
+    def _lifecycle_data(self) -> dict[str, Any]:
+        m = self.meta
+        return {"matchId": self.match_id, "clockS": r2(self.clock), "score": {"h": self.teams["h"].goals, "a": self.teams["a"].goals},
+                "home": self.team_names.get("h"), "away": self.team_names.get("a"),
+                "seed": m.seed if m else None, "paramsVersion": m.params_version if m else None,
+                "periodMin": m.period_min if m else 45.0, "fps": m.fps if m else 10}
 
     def state_doc(self) -> dict[str, Any]:
         total_poss = self.teams["h"].possession_s + self.teams["a"].possession_s
@@ -276,7 +287,10 @@ class MatchInterpreter:
             self._set_possession(None, ev.clock_s)
             kind = "half_time" if ev.period == 1 else "full_time"
             out.moments.append(self._moment(kind, ev, trace_id))
+            if kind == "full_time":
+                self.ended = True
             out.state = self.state_doc()
+            out.lifecycle.append(("HalfTime" if ev.period == 1 else "FullTime", self._lifecycle_data()))
         elif ev.type in ("pass", "carry", "shot") and team:
             if self.possession != team:
                 self._set_possession(team, ev.clock_s)

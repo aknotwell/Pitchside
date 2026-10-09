@@ -195,3 +195,58 @@ resource apiCanRunJob 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     principalType: 'ServicePrincipal'
   }
 }
+
+// Event-driven job: one execution per FullTime event (Event Grid -> Storage queue -> KEDA).
+// It re-simulates the match deterministically from its seed and packages a replay for the web app.
+resource replayJob 'Microsoft.App/jobs@2025-07-01' = {
+  name: 'job-replay-${resourceToken}'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identities.simulator.id}': {} }
+  }
+  properties: {
+    environmentId: env.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Event'
+      replicaTimeout: 1800
+      replicaRetryLimit: 1
+      eventTriggerConfig: {
+        parallelism: 1
+        replicaCompletionCount: 1
+        scale: {
+          minExecutions: 0
+          maxExecutions: 5
+          pollingInterval: 20
+          rules: [
+            {
+              name: 'replay-queue'
+              type: 'azure-queue'
+              identity: identities.simulator.id
+              metadata: { accountName: storageName, queueName: 'replay-requests', queueLength: '1' }
+            }
+          ]
+        }
+      }
+      registries: [ { server: registryServer, identity: identities.simulator.id } ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'main'
+          image: interpreter.outputs.image
+          env: concat(commonEnv, [
+            { name: 'MATCHLENS_SERVICE', value: 'replay' }
+            { name: 'AZURE_CLIENT_ID', value: identities.simulator.clientId }
+            { name: 'OTEL_SERVICE_NAME', value: 'replay' }
+          ])
+          resources: { cpu: json('1.0'), memory: '2Gi' }
+        }
+      ]
+    }
+  }
+}
+
+output replayJobName string = replayJob.name

@@ -21,6 +21,8 @@ dependencies = [
   "agent-framework-azure-cosmos==1.0.0b261002",
   "mcp>=1.24,<2",
   "azure-keyvault-secrets>=4.10,<5",
+  "azure-eventgrid>=4.22,<5",
+  "azure-storage-queue>=12.13,<13",
   "fastapi>=0.143,<1",
   "uvicorn[standard]>=0.54,<1",
 ]

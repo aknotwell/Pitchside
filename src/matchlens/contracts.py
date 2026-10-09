@@ -65,6 +65,7 @@ class MatchMetadata(BaseModel):
     params_version: str
     speed: float = 1.0
     fps: int = 10
+    period_min: float = 45.0
     competition: str = "Northern Shield League (fictional)"
 
 

@@ -336,3 +336,27 @@ Model tokens are cents per match. The free-trial credit covers it.
     The recap panel has a player.
   - Verified: the Spanish half-time recap is 64 KB of MP3, served 200
     `audio/mpeg`.
+
+## Checkpoint 6: lifecycle events and event-driven replays (2026-10-09)
+
+- **Event Grid topic `evgt-lifecycle-*`** (CloudEvents 1.0, local auth off).
+  - The interpreter publishes `MatchLens.Match.MatchStarted`, `HalfTime` and
+    `FullTime`, carrying the seed, params version, period length and score.
+  - The `fulltime-to-replay` subscription delivers to the Storage queue
+    `replay-requests`, using the topic's own system identity (Queue Message
+    Sender role, no SAS).
+- **Event-driven ACA Job `job-replay-*`**: scales from zero on queue length
+  (KEDA `azure-queue` with managed identity).
+  - It re-simulates the match from its seed. Determinism is tested: same
+    event ids as the live match.
+  - It joins every cue that aired and writes `replays/{match}.json.gz`
+    (about 200 KB for a 20-minute match), plus a `runs` doc.
+- **API:** `GET /api/replays` and `GET /api/replays/{id}` (gzip).
+- **Web:** a "▶ Replays" group in the match picker, with 1/4/10/20× playback.
+  Cues are scheduled exactly as they aired, for every persona and language,
+  with audio. Verified in the browser: the Japanese fan view showed the
+  agent-verified half-time recap with Japanese audio.
+- **Bug found:** Event Grid writes Storage-queue messages Base64-encoded. The
+  first job execution failed to parse one, and the message stayed invisible
+  for 15 minutes. Fixed with a decoder (tested), failure logging and a 5-minute
+  visibility timeout.

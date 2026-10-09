@@ -90,7 +90,7 @@ module data 'modules/data.bicep' = {
     cosmosName: 'cosmos-${resourceToken}'
     storageName: 'st${resourceToken}'
     cosmosDataPrincipals: concat(
-      [ ids.api.principalId, ids.interpreter.principalId, ids.storyteller.principalId, ids.functions.principalId ],
+      [ ids.api.principalId, ids.interpreter.principalId, ids.storyteller.principalId, ids.functions.principalId, ids.simulator.principalId ],
       hasUser ? [ principalId ] : [])
     storageRoles: concat(
       [
@@ -98,6 +98,7 @@ module data 'modules/data.bicep' = {
         { principalId: ids.storyteller.principalId, roleId: roles.blobContributor, principalType: svc }
         { principalId: ids.simulator.principalId, roleId: roles.blobContributor, principalType: svc }
         { principalId: ids.api.principalId, roleId: roles.blobContributor, principalType: svc }
+        { principalId: ids.simulator.principalId, roleId: roles.queueContributor, principalType: svc }
         { principalId: ids.functions.principalId, roleId: roles.blobOwner, principalType: svc }
         { principalId: ids.functions.principalId, roleId: roles.queueContributor, principalType: svc }
         { principalId: ids.functions.principalId, roleId: roles.tableContributor, principalType: svc }
@@ -193,6 +194,20 @@ module keyvault 'modules/keyvault.bicep' = {
   }
 }
 
+module lifecycle 'modules/lifecycle.bicep' = {
+  name: 'lifecycle'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    resourceToken: resourceToken
+    storageName: data.outputs.storageName
+    senderPrincipals: concat(
+      map([ ids.interpreter, ids.storyteller ], i => { principalId: i.principalId, principalType: svc }),
+      user)
+  }
+}
+
 module web 'modules/web.bicep' = {
   name: 'web'
   scope: rg
@@ -222,6 +237,8 @@ var commonEnv = [
   { name: 'ASK_DEPLOYMENT', value: 'gpt-4.1-mini' }
   { name: 'SPEECH_RESOURCE_ID', value: foundry.outputs.accountId }
   { name: 'SPEECH_REGION', value: location }
+  { name: 'EVENTGRID_ENDPOINT', value: lifecycle.outputs.topicEndpoint }
+  { name: 'REPLAY_QUEUE', value: 'replay-requests' }
 ]
 
 module aca 'modules/aca.bicep' = {
@@ -300,3 +317,4 @@ output SIM_JOB_NAME string = aca.outputs.simulatorJobName
 output INTERPRETER_APP_NAME string = aca.outputs.interpreterName
 output FUNCTIONS_APP_NAME string = functions.outputs.name
 output KEYVAULT_NAME string = keyvault.outputs.name
+output REPLAY_JOB_NAME string = aca.outputs.replayJobName

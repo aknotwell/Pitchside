@@ -8,7 +8,8 @@ import { Scoreboard } from "./components/Scoreboard";
 import { Stats } from "./components/Stats";
 import { WhyDrawer } from "./components/WhyDrawer";
 import { BROADCAST_DELAY_S, useLiveMatch } from "./live";
-import type { Cue, Lang, MatchSummary, Persona } from "./types";
+import { useReplay } from "./replay";
+import type { Cue, Lang, MatchState, MatchSummary, Persona } from "./types";
 
 const LANGS: { id: Lang; label: string }[] = [{ id: "en", label: "EN" }, { id: "es", label: "ES" }, { id: "ja", label: "日本語" }];
 
@@ -20,14 +21,27 @@ export default function App() {
   const [lang, setLang] = useState<Lang>((params.get("lang") as Lang) || "en");
   const [why, setWhy] = useState<Cue | null>(null);
   const [tab, setTab] = useState<"stats" | "feed" | "ask" | "producer">("stats");
-  const live = useLiveMatch(matchId, persona, lang);
+  const [replays, setReplays] = useState<Awaited<ReturnType<typeof api.replays>>["replays"]>([]);
+  const [replayId, setReplayId] = useState<string | null>(params.get("replay"));
+  const [replaySpeed, setReplaySpeed] = useState(4);
+  const [finalState, setFinalState] = useState<MatchState | null>(null);
+  const liveFeed = useLiveMatch(replayId ? null : matchId, persona, lang);
+  const replayFeed = useReplay(replayId, persona, lang, replaySpeed, finalState);
+  const live = replayId ? replayFeed : liveFeed;
+
+  useEffect(() => {
+    api.replays().then((r) => setReplays(r.replays)).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (replayId) api.match(replayId).then(setFinalState).catch(() => setFinalState(null));
+  }, [replayId]);
 
   useEffect(() => {
     let alive = true;
     const load = () => api.matches().then((r) => {
       if (!alive) return;
       setMatches(r.matches);
-      setMatchId((cur) => cur ?? (r.matches.find((m) => !m.ended) ?? r.matches[0])?.id ?? null);
+      setMatchId((cur) => cur ?? (r.matches.find((m) => !m.ended && Date.now() / 1000 - m.updated < 300) ?? r.matches[0])?.id ?? null);
     }).catch(() => {});
     load();
     const id = setInterval(load, 10000);
@@ -35,20 +49,33 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const q = new URLSearchParams({ ...(matchId ? { match: matchId } : {}), persona, lang });
+    const q = new URLSearchParams({ ...(replayId ? { replay: replayId } : matchId ? { match: matchId } : {}), persona, lang });
     history.replaceState(null, "", `?${q}`);
-  }, [matchId, persona, lang]);
+  }, [matchId, replayId, persona, lang]);
 
   return (
     <div className="app">
       <header>
         <h1>MatchLens <small>live explain layer</small></h1>
-        <select aria-label="Match" value={matchId ?? ""} onChange={(e) => setMatchId(e.target.value || null)}>
+        <select aria-label="Match" value={replayId ? `replay:${replayId}` : matchId ?? ""}
+                onChange={(e) => { const v = e.target.value; if (v.startsWith("replay:")) { setReplayId(v.slice(7)); } else { setReplayId(null); setMatchId(v || null); } }}>
           {matches.length === 0 && <option value="">No matches yet</option>}
-          {matches.map((m) => (
-            <option key={m.id} value={m.id}>{m.home} {m.homeGoals}–{m.awayGoals} {m.away} · {m.ended ? "FT" : m.displayClock}</option>
-          ))}
+          <optgroup label="Live and recent">
+            {matches.map((m) => (
+              <option key={m.id} value={m.id}>{m.home} {m.homeGoals}–{m.awayGoals} {m.away} · {m.ended ? "FT" : m.displayClock}</option>
+            ))}
+          </optgroup>
+          {replays.length > 0 && (
+            <optgroup label="Replays">
+              {replays.map((r) => <option key={r.matchId} value={`replay:${r.matchId}`}>▶ {r.home} {r.score?.h}–{r.score?.a} {r.away}</option>)}
+            </optgroup>
+          )}
         </select>
+        {replayId && (
+          <select aria-label="Replay speed" value={replaySpeed} onChange={(e) => setReplaySpeed(Number(e.target.value))}>
+            {[1, 4, 10, 20].map((s) => <option key={s} value={s}>{s}× replay</option>)}
+          </select>
+        )}
         <div className="seg" role="group" aria-label="Viewer">
           {(["casual", "analyst"] as Persona[]).map((p) => (
             <button key={p} className={persona === p ? "on" : ""} onClick={() => setPersona(p)}>{p === "casual" ? "Fan" : "Analyst"}</button>
@@ -60,7 +87,7 @@ export default function App() {
       </header>
       <main>
         <section className="stage">
-          <Scoreboard state={live.state} delay={BROADCAST_DELAY_S} connected={live.connected} />
+          <Scoreboard state={live.state} delay={replayId ? 0 : BROADCAST_DELAY_S} connected={live.connected} replay={!!replayId} />
           <Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} />
           <Overlay cues={live.cues} onWhy={setWhy} />
         </section>

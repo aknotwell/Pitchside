@@ -22,7 +22,12 @@ agent resumes exactly where it stopped.
 5. Open **Ask** and ask "Who has been the better team and why?" An Agent
    Framework agent answers by calling the **MatchLens MCP server on Azure
    Functions**, so every number comes from a tool.
-6. Click **Chaos drill**. The next explanation kills a storyteller replica
+6. Pick a **▶ Replay** in the match list. Finished matches are packaged by an
+   **event-driven Container Apps Job** (Event Grid `FullTime` → Storage queue →
+   KEDA). It re-simulates the match deterministically from its seed and
+   includes every cue that aired. There is always something to watch, even
+   when nothing is live.
+7. Click **Chaos drill**. The next explanation kills a storyteller replica
    mid-workflow. Watch the run table: Service Bus redelivers the moment and the
    Agent Framework workflow **resumes from its Cosmos DB checkpoint** without
    calling the model again.
@@ -49,6 +54,11 @@ flowchart LR
   MCP --> COS
   KV[(Key Vault)] -.->|MCP key, managed identity| API
   LA[Logic App keep-live] -->|every 10 min: start a match if none is live| SIM
+  INT -->|MatchStarted · HalfTime · FullTime CloudEvents| EG[(Event Grid topic)]
+  EG -->|FullTime| Q[(Storage queue)]
+  Q -->|KEDA azure-queue| RJ[[ACA Job: replay packager<br/>deterministic re-simulation]]
+  RJ -->|replay package| BLOB[(Blob: replays)]
+  API -->|replays| BLOB
   INT & STO & API -.->|OpenTelemetry| AI[Application Insights]
 ```
 
@@ -119,6 +129,8 @@ flowchart LR
 | Azure Functions (Flex Consumption) | `functions/cue_publisher`: Cosmos change feed → Web PubSub, plus the **match-data MCP server** (4 MCP tool triggers) |
 | MCP (Azure Functions + Agent Framework client) | "Ask the match" agent and GitHub Copilot (`.vscode/mcp.json`, plus the Azure MCP Server) call the same tools |
 | Logic Apps | `logic-keeplive`: keeps a live match on air for judges (managed identity → ARM) |
+| Event Grid | `match-lifecycle` topic (CloudEvents, Entra-only); `FullTime` is routed to a Storage queue by the topic's own managed identity |
+| Container Apps Jobs (event-driven) | `job-replay`: scales from zero on queue length (KEDA `azure-queue`, managed identity) and packages replays |
 | Key Vault | Holds the only non-Entra secret (the MCP extension key), read by managed identity |
 | Microsoft Foundry | `infra/modules/foundry.bicep`: project with pinned `gpt-5-mini` and `gpt-4.1-mini` deployments |
 | Microsoft Agent Framework 1.21 | `src/matchlens/story/workflow.py`: checkpointed workflow with `CosmosCheckpointStorage` |

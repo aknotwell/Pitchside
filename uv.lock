@@ -355,6 +355,20 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-eventgrid"
+version = "4.22.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/32/6f/358d875442cabde20e34c58fb54f927ea8a342bedecbd62164c2ae635b4f/azure_eventgrid-4.22.1.tar.gz", hash = "sha256:207738744e01e073e0475b6b3bc12e3037e0e56d8068f43eefcded6de4de67b5", size = 140873, upload-time = "2026-07-29T07:15:40.482Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e6/95/0998a0d7546b88f44d84ceac917b14b97e6bd751aad2f0ee6df0a62cb1ca/azure_eventgrid-4.22.1-py3-none-any.whl", hash = "sha256:648bbd136d5726a8addd0d644c5afcd2234631b1f409253d4b08057e5b4592d1", size = 128844, upload-time = "2026-07-29T07:15:41.916Z" },
+]
+
+[[package]]
 name = "azure-eventhub"
 version = "5.15.1"
 source = { registry = "https://pypi.org/simple" }
@@ -498,6 +512,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/26/ca/5299cedef5957dd838d4dc46f97bea37335bb39f6610d72b27e1a3317650/azure_storage_blob-12.31.0.tar.gz", hash = "sha256:997b393cfcbdc4b186d5911790d91f80387f7edc12c4d73eab963a2d26e5b2a9", size = 670868, upload-time = "2026-09-30T21:23:22.837Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/57/d1f45fbccc0dfbe6b6db7e5fa06199e35219c712f3743677bec1b4e7d78b/azure_storage_blob-12.31.0-py3-none-any.whl", hash = "sha256:0c0cb601d3462491d09ea96023cd791bb9dd4b173bf950daf3cff34ff47ba5b5", size = 455738, upload-time = "2026-09-30T21:23:24.944Z" },
+]
+
+[[package]]
+name = "azure-storage-queue"
+version = "12.18.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "cryptography" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/29/78/37012b4026dfa6b9795c68736dfe70d271d70cf7f4802a2874f924643b11/azure_storage_queue-12.18.0.tar.gz", hash = "sha256:672dac5a7df2e93134f1b8ac6dc0df29823b9daa490b61bda1f88601403b5aa9", size = 233348, upload-time = "2026-09-30T21:20:05.399Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8c/d9/a528dcd2c16b7ad530b41fc54d936a178eb5ca46b961ff65a0d0922f27e1/azure_storage_queue-12.18.0-py3-none-any.whl", hash = "sha256:a91e5dce29279aa8528ee6a43a5aed10e22de94dae9a4c5dccbd4d1aee2cc5c1", size = 206472, upload-time = "2026-09-30T21:20:07.279Z" },
 ]
 
 [[package]]
@@ -1262,6 +1291,7 @@ dependencies = [
     { name = "agent-framework-foundry" },
     { name = "aiohttp" },
     { name = "azure-cosmos" },
+    { name = "azure-eventgrid" },
     { name = "azure-eventhub" },
     { name = "azure-eventhub-checkpointstoreblob-aio" },
     { name = "azure-identity" },
@@ -1269,6 +1299,7 @@ dependencies = [
     { name = "azure-messaging-webpubsubservice" },
     { name = "azure-monitor-opentelemetry" },
     { name = "azure-servicebus" },
+    { name = "azure-storage-queue" },
     { name = "fastapi" },
     { name = "mcp" },
     { name = "numpy" },
@@ -1292,6 +1323,7 @@ requires-dist = [
     { name = "agent-framework-foundry", specifier = "==1.14.1" },
     { name = "aiohttp", specifier = ">=3.12" },
     { name = "azure-cosmos", specifier = ">=4.17,<5" },
+    { name = "azure-eventgrid", specifier = ">=4.22,<5" },
     { name = "azure-eventhub", specifier = ">=5.15,<6" },
     { name = "azure-eventhub-checkpointstoreblob-aio", specifier = ">=1.2,<2" },
     { name = "azure-identity", specifier = ">=1.26,<2" },
@@ -1299,6 +1331,7 @@ requires-dist = [
     { name = "azure-messaging-webpubsubservice", specifier = ">=1.3,<2" },
     { name = "azure-monitor-opentelemetry", specifier = ">=1.8,<2" },
     { name = "azure-servicebus", specifier = ">=7.15,<8" },
+    { name = "azure-storage-queue", specifier = ">=12.13,<13" },
     { name = "fastapi", specifier = ">=0.143,<1" },
     { name = "mcp", specifier = ">=1.24,<2" },
     { name = "numpy", specifier = ">=2.5,<3" },

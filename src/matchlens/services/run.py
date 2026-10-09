@@ -6,7 +6,7 @@ import importlib
 import os
 import sys
 
-SERVICES = {"api", "interpreter", "storyteller", "simulator"}
+SERVICES = {"api", "interpreter", "storyteller", "simulator", "replay"}
 
 
 def main() -> None:

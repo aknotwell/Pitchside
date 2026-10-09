@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import pickle
 import signal
 import time
@@ -64,6 +65,11 @@ class InterpreterService:
         self.sender = self.sb.get_queue_sender(s.servicebus_queue)
         self.wps = WebPubSubServiceClient(endpoint=s.webpubsub_endpoint, hub=s.webpubsub_hub, credential=self.cred)
         self.blobs = BlobServiceClient(s.storage_blob_endpoint, credential=self.cred)
+        self.eventgrid = None
+        if os.environ.get("EVENTGRID_ENDPOINT"):
+            from azure.eventgrid.aio import EventGridPublisherClient
+
+            self.eventgrid = EventGridPublisherClient(os.environ["EVENTGRID_ENDPOINT"], self.cred)
         self.snapshots = self.blobs.get_container_client(s.checkpoint_container)
         store = BlobCheckpointStore(blob_account_url=s.storage_blob_endpoint, container_name=s.checkpoint_container,
                                     credential=self.cred)
@@ -193,6 +199,13 @@ class InterpreterService:
             self._publish_nowait(frames_group(mid), tick)
         if sb_msgs:
             tasks.append(self.sender.send_messages(sb_msgs))
+        lifecycle = [(it, t, d) for it, out in outputs for t, d in out.lifecycle]
+        if lifecycle and self.eventgrid is not None:
+            from azure.core.messaging import CloudEvent
+
+            events = [CloudEvent(source=f"/matchlens/matches/{d['matchId']}", type=f"MatchLens.Match.{t}", data=d,
+                                 subject=d["matchId"]) for _, t, d in lifecycle]
+            tasks.append(self.eventgrid.send(events))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:
             if isinstance(r, Exception):

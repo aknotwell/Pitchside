@@ -17,3 +17,8 @@ if [ -n "${KEYVAULT_NAME:-}" ] && [ -n "${FUNCTIONS_APP_NAME:-}" ]; then
     az keyvault secret set --vault-name "$KEYVAULT_NAME" --name mcp-key --value "$KEY" -o none && echo "mcp-key stored in $KEYVAULT_NAME"
   fi
 fi
+
+# The replay job runs the same image as the simulator.
+if [ -n "${REPLAY_JOB_NAME:-}" ]; then
+  az containerapp job update -g "$RG" -n "$REPLAY_JOB_NAME" --image "$IMAGE" -o none && echo "replay job -> $IMAGE"
+fi

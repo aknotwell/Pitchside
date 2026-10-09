@@ -239,6 +239,34 @@ async def audio(match_id: str, name: str, request: Request):
     return Response(data, media_type="audio/mpeg", headers={"Cache-Control": "public, max-age=86400"})
 
 
+@app.get("/api/replays")
+async def replays(request: Request):
+    """Finished matches packaged by the event-driven replay job."""
+    items = []
+    async for it in request.app.state.db["runs"].query_items(
+            "SELECT TOP 20 c.matchId, c.home, c.away, c.score, c.at, c.cues, c.frames FROM c "
+            "WHERE c.type = 'replay' ORDER BY c.at DESC"):
+        items.append(it)
+    return {"replays": items}
+
+
+@app.get("/api/replays/{match_id}")
+async def replay(match_id: str, request: Request):
+    from azure.storage.blob.aio import BlobClient
+    from fastapi.responses import Response
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", match_id):
+        raise HTTPException(400, "bad match id")
+    blob = BlobClient(settings().storage_blob_endpoint, "replays", f"{match_id}.json.gz", credential=request.app.state.cred)
+    try:
+        async with blob:
+            data = await (await blob.download_blob()).readall()
+    except Exception as exc:
+        raise HTTPException(404, "replay not found") from exc
+    return Response(data, media_type="application/json",
+                    headers={"Content-Encoding": "gzip", "Cache-Control": "public, max-age=3600"})
+
+
 @app.post("/api/chaos")
 async def chaos(request: Request):
     """Arm the chaos drill: the next moment kills a storyteller replica mid-workflow."""

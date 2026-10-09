@@ -25,6 +25,7 @@ export const api = {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ matchId, question, lang }),
     }),
+  replays: () => j<{ replays: { matchId: string; home: string; away: string; score: { h: number; a: number }; at: number }[] }>("/api/replays"),
   chaos: () => j<{ armed: boolean }>("/api/chaos", { method: "POST" }),
   ops: () => j<{ chaos: { armed: boolean; lastFiredAt?: number }; runs: Record<string, unknown>[] }>("/api/ops"),
 };

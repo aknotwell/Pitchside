@@ -664,6 +664,7 @@ class MatchEngine:
             seed=self.seed,
             params_version=params_version(self.p),
             fps=self.fps,
+            period_min=float(self.p["period_min"]),
         )
         return SimResult(meta, self.events, ts, ball, players, ids, self.period_bounds)
 
