@@ -146,6 +146,16 @@ Pydantic schemas in `backend/pitchside/schemas.py`, with TS types generated for 
 | **Should** | Producer agent with screen-time budget, Scenario agent, "Why?" drill-down, Recap/Scout reports, Foundry evals in CI, studio approval mode, 5 languages |
 | **Could** | Fabric Lakehouse + Real-Time dashboard, AI Speech voice commentary, CV auto-eventing on rendered synthetic video |
 
+### Note: options for rendered video (CV auto-eventing, paused)
+Our generator stays the source of truth for events and tracking. If we attempt the CV stretch goal, the plan is: render our tracking data to video → run detection + tracking + pitch mapping → recover events → score them against the generator's ground truth.
+
+- **Google Research Football** (open-source 11v11 engine with 3D rendering) is the main candidate if we don't build our own renderer.
+  - Licence: Apache 2.0. Fine to use and modify; if we vendor or change its source we must include the licence, mark changed files, keep its notices and NOTICE attributions. No Google branding.
+  - Before using it: check for separate licences on its art and sound assets, confirm with the organisers that video rendered from it counts as our own footage, and test the install early (unmaintained for years; may need old Python and libraries, possibly awkward on Apple Silicon).
+  - It doesn't output football events or calibrated stats, so it's for rendering only, not a replacement for our generator.
+- **Unreal Engine pipelines** (e.g. SoccerSynth) produce photorealistic frames with vision labels, but are heavy (GPU, setup time). Only consider them if a team member already knows UE5, and check their licences.
+- **Real open data** (StatsBomb Open Data, Metrica Sports samples) can be used to calibrate the generator, never as the app's data. Follow their attribution terms and confirm with the organisers.
+
 ---
 
 ## Timeline (~2.5 weeks)
