@@ -570,24 +570,24 @@ On 64 held-out matches (`docs/REALISM.md`):
 | Headers, share of shots | 12% | 17% |
 | Shots from outside the box | 36% | 38% |
 
-## Checkpoint 13: running and pressing realism (2026-10-09)
+## Checkpoint 13: running, pressing and duel realism (2026-10-09)
 
 - **Routine hurrying is capped at a working pace** (`hard_run_mps`): pressing, chasing and
   getting onto a pass. Only genuine sprints reach a player's top speed: runs in behind,
-  recovery runs near goal, and defenders racing a ball played in behind them. That lets
-  top speeds be realistic without inflating the sprint count.
-- **Deeper runs in behind** (`run_depth_m`); fewer, cleaner challenges; slightly more
-  carrying and longer on the ball; shorter restart waits.
+  recovery runs near goal, and defenders racing a ball played in behind them. Top speeds
+  are now realistic without inflating the sprint count.
+- **Deeper runs in behind** (`run_depth_m`), fewer and cleaner challenges, more headed
+  chances, slightly lower chance quality, shorter restart waits.
 
-On 64 held-out matches, every SkillCorner measure is within 6%:
+On 64 held-out matches (`docs/REALISM.md`), every SkillCorner measure is within 9%:
 
 | Measure | Now | Real |
 |---|---|---|
-| Passes per match | 855 (+6%) | 804 |
-| Pass completion | 82.7% | 83.4% |
-| Shots per match | 26.2 | 26.3 |
-| Mean pass length | 15.6 m | 16.3 m |
-| Distance per 90 | 10.49 km | 10.30 km |
+| Passes per match | 878 (+9%) | 804 |
+| Pass completion | 82.0% | 83.4% |
+| Shots per match | 27.7 (+5%) | 26.3 |
+| Mean pass length | 15.5 m | 16.3 m |
+| Distance per 90 | 10.61 km | 10.30 km |
 | Peak speed | 27.2 km/h (−4%) | 28.3 km/h |
 | Sprints per 90 | 8.6 | 8.5 |
 
@@ -595,12 +595,12 @@ Against typical match values:
 
 | Measure | Now | Typical |
 |---|---|---|
-| Fouls per match | 22 | 23 |
+| Goals per match | 2.5 (2.8 on a second set of 64) | 2.8 |
+| Fouls per match | 21 | 23 |
 | Yellow cards per match | 3.1 | 3.8 |
+| Tackles won per match | 39 | 38 |
 | Throw-ins per match | 42 | 40 |
-| Ball in play | 59% | 57% |
-| Clearances per match | 33 | 40 |
-| Shots from outside the box | 35% | 38% |
-| Goals per match | 3.0–3.4 | 2.8 |
-| Tackles won per match | 51 | 38 |
-| Headers, share of shots | 11% | 17% |
+| Ball in play | 60% | 57% |
+| Clearances per match | 36 | 40 |
+| Shots from outside the box | 39% | 38% |
+| Headers, share of shots | 12% | 17% |

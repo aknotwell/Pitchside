@@ -72,7 +72,7 @@ KNOBS: dict[str, tuple[float, float]] = {
     "clear_value": (0.0, 0.03),
     "take_on_prob": (0.05, 0.6),
     "press_effort": (0.5, 0.95),
-    "header_chance": (0.05, 0.6),
+    "header_chance": (0.05, 0.95),
     "crowd_tackle_boost": (0.0, 2.0),
     "turnover_weight": (0.2, 2.0),
     "box_space_shot_bonus": (0.0, 0.12),
