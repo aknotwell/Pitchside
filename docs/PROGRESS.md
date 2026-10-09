@@ -237,3 +237,73 @@ instead of 3.
 5. Watchers on my home network timed out on the WebSocket handshake while
    Web PubSub showed no connection attempts. Fix: latency is now measured
    server side, from the Function, as well.
+
+### Calibration (synthetic-data realism)
+
+`python -m matchlens.calibrate.fit` downloads SkillCorner open data (MIT) into
+`data/raw/` (gitignored), computes targets and fits the simulator by
+coordinate search. It writes `src/matchlens/sim/fitted_params.json` and
+`docs/REALISM.md`.
+
+Held-out results:
+
+| Metric | Error vs real |
+|---|---|
+| Passes per match | +2% |
+| Pass completion | −1% |
+| Sprints per 90 | +1% |
+| Peak speed | −4% |
+| Distance per 90 | −13% |
+| Shots | +12% |
+| Pass length | +13% |
+| Peak-speed KS distance | 0.84 → 0.44 |
+
+Two model changes made this possible: off-ball drift and a sprint/jog movement
+split. The simulator now loads the fitted parameters by default; the live
+deployment uses them.
+
+## State when I stopped (2026-10-09 ~08:40 UTC)
+
+Everything is committed on branch `t3code/soccer-hackathon-infrastructure`.
+Nothing is pushed, because pushing publishes to the public repo; that's your
+call.
+
+**Cost posture (idle):** scale-to-zero everywhere, keep-live off. The
+always-on base costs about **$3/day**:
+
+| Item | $/day |
+|---|---|
+| Web PubSub Standard | 1.61 |
+| Event Hubs Standard | 0.72 |
+| Service Bus Standard | 0.33 |
+| Log Analytics, ACR, Cosmos/Storage | small |
+
+Model tokens are cents per match. The free-trial credit covers it.
+
+### YOU (when back)
+
+1. **Push and open a PR** if you're happy: `git push -u origin t3code/soccer-hackathon-infrastructure`.
+2. **Upgrade to pay-as-you-go before ~Oct 20**, then request GPT-6 quota.
+   Claude then becomes possible too.
+3. **Judging window (Oct 27 – Nov 10):** `azd env set DEMO_MODE true && azd provision`.
+   This keeps one warm replica per app, sets always-ready Functions and turns
+   on the keep-live Logic App.
+4. **GitHub Actions:** run `azd pipeline config` once to create the OIDC
+   federation and repository variables for `.github/workflows/deploy.yml`.
+   This writes to GitHub and Azure AD.
+5. **Name**: "MatchLens AI" is taken by another entry. Decide whether to rename.
+6. Register teammates by **Oct 20, 12:00 PT**.
+
+### Next build steps (suggested order)
+
+1. Foundry **evaluation gate** in CI (groundedness and faithfulness on golden
+   moments).
+2. **Event Grid** lifecycle events (`FullTime`, `RecapReady`) → Logic App
+   recap distribution.
+3. **Azure Speech** audio recaps per language.
+4. Chaos Studio broker faults (disable the Event Hub or queue for 60 s) as a
+   second resilience drill.
+5. Fabric RTI (only if a trial capacity is available).
+6. Calibration round 2: IDSSE (CC BY 4.0) for tracking-level metrics; reduce
+   the shots and pass-length gaps.
+7. Polish the UI; record the **< 2 min video**.
