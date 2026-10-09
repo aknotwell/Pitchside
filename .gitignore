@@ -16,3 +16,4 @@ dist/
 .env
 .DS_Store
 pytest-report.xml
+test-summary.md
