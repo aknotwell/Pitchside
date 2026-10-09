@@ -155,6 +155,7 @@ azd up                        # provision + deploy (~20 min the first time)
 
 # Core logic, no Azure needed
 uv sync && uv run pytest      # simulator, interpreter, verifier, workflow, crash-resume
+cd web && npm ci && npm test   # web player: replay clock and playback, frame interpolation, live-match filter
 
 # Web player against your deployment
 cd web && echo "VITE_API_URL=$(azd env get-value API_URL)" > .env.local && npm i && npm run dev

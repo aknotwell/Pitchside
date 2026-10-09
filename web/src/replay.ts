@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { API } from "./api";
 import type { Live } from "./live";
+import { type Anchor, playheadAt as advance, rebase, scoreboardAt } from "./playback";
 import { sampleFrames } from "./sample";
 import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona, TeamSummary } from "./types";
 
@@ -18,18 +19,6 @@ function team(meta: MatchMeta, side: "home" | "away", goals: number): TeamSummar
   return { id: t.id, name: t.name, goals, shots: 0, shotsOnTarget: 0, xg: 0, passes: 0, passAccuracy: 0, finalThirdEntries: 0, ppda: null, pressures: 0, turnovers: 0 };
 }
 
-/** Broadcast clock at match time `t`: the simulator's rule (`display_clock` in sim/engine.py), so the
- *  replay clock runs every second instead of jumping from one event's clock to the next. */
-function displayClock(t: number, period: number, periodStart: number, periodMin: number): string {
-  const regulation = periodMin * 60;
-  const base = period === 1 ? 0 : regulation;
-  const elapsed = Math.max(0, t - periodStart);
-  const mmss = (m: number, s: number) => `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  if (elapsed <= regulation) { const total = base + elapsed; return mmss(Math.floor(total / 60), Math.floor(total % 60)); }
-  const extra = elapsed - regulation;
-  return `${Math.floor((base + regulation) / 60)}+${Math.floor(extra / 60) + 1}:${String(Math.floor(extra % 60)).padStart(2, "0")}`;
-}
-
 /** Plays a packaged replay with the same rendering contract as the live hook. */
 export function useReplay(matchId: string | null, persona: Persona, lang: Lang, speed: number, finalState: MatchState | null, paused: boolean): Live {
   const pkg = useRef<ReplayPackage | null>(null);
@@ -37,8 +26,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
   // so it lives here rather than in the playback effect's dependencies.
   const vclock = useRef<{ offset: number; pausedAt: number | null }>({ offset: 0, pausedAt: null });
   const vt = (now: number) => (vclock.current.pausedAt ?? now) - vclock.current.offset;
-  // Playhead anchor: at playback time `wall` the replay was at match time `t0`, moving at `speed`.
-  const start = useRef<{ wall: number; t0: number; speed: number }>({ wall: 0, t0: 0, speed });
+  const start = useRef<Anchor>({ wall: 0, t0: 0, speed });
   const shownAt = useRef<Map<string, number>>(new Map());
   const finalRef = useRef<MatchState | null>(finalState);
   finalRef.current = finalState;  // read inside the loop; changing it must not restart playback
@@ -59,8 +47,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
   useEffect(() => {  // a new speed carries on from the current position instead of restarting
     const s = start.current;
     if (s.speed === speed) return;
-    const now = vt(performance.now() / 1000);
-    start.current = { wall: now, t0: s.t0 + (now - s.wall) * s.speed, speed };
+    start.current = rebase(s, vt(performance.now() / 1000), speed);
   }, [speed]);
 
   useEffect(() => {
@@ -84,7 +71,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       const now = vt(wall);
       const end = p.frames[p.frames.length - 1][0];
       const s = start.current;
-      let playhead = s.t0 + (now - s.wall) * s.speed;
+      let playhead = advance(s, now);
       if (playhead > end + 20) { start.current = { ...s, wall: now, t0: p.frames[0][0] }; shownAt.current = new Map(); playhead = p.frames[0][0]; }
       return playhead;
     };
@@ -104,17 +91,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       const playhead = playheadAt(nowMs / 1000)!;
       const now = vt(nowMs / 1000);  // cue lifetimes stand still while paused
       const frame = sampleFrames(frames.current, playhead)!;
-      // scoreboard from events
-      let h = 0, aw = 0, period = 1, periodStart = 0, periodEnd: number | null = null;
-      for (const e of p.events) {
-        if (e.clock_s > playhead) break;
-        if (e.type === "shot" && e.outcome === "goal") { if (e.team_id === "h") h++; else aw++; }
-        // Period comes from the whistles only: an event resolving on the half-time whistle can carry the next period
-        if (e.type === "period_start") { period = e.period; periodStart = e.clock_s; periodEnd = null; }
-        if (e.type === "period_end") periodEnd = e.clock_s;
-      }
-      // The clock stops at the whistle and holds until the next period starts
-      const clock = displayClock(Math.min(playhead, periodEnd ?? playhead), period, periodStart, p.meta.period_min ?? 45);
+      const { home: h, away: aw, period, clock } = scoreboardAt(p.events, playhead, p.meta.period_min ?? 45);
       const fs = finalRef.current;
       const base = fs && fs.id === p.matchId ? fs : null;
       const state: MatchState = base
