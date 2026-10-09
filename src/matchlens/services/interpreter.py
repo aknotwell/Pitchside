@@ -27,6 +27,8 @@ tracer = trace.get_tracer("matchlens.interpreter")
 SNAPSHOT_EVERY_S = 5.0
 TICK_EVERY_S = 1.0  # one coalesced Web PubSub message per match per second
 MAX_FRAMES_PER_TICK = 6
+MAX_INFLIGHT_PUBLISHES = 64  # live ticks are ephemeral: drop them rather than slow the stream down
+PUBLISH_TIMEOUT_S = 3.0
 
 
 class InterpreterService:
@@ -38,6 +40,9 @@ class InterpreterService:
         self.pending_frames: dict[str, list] = {}
         self.pending_state: dict[str, dict] = {}
         self.last_tick: dict[str, float] = {}
+        self.inflight = 0
+        self.dropped_ticks = 0
+        self.bg: set[asyncio.Task] = set()
 
     async def start(self) -> None:
         from azure.cosmos.aio import CosmosClient
@@ -158,7 +163,7 @@ class InterpreterService:
                 frames = [frames[int(k * step)] for k in range(MAX_FRAMES_PER_TICK - 1)] + [frames[-1]]
             tick = {"type": "tick", "matchId": mid, "frames": frames, "state": self.pending_state.pop(mid, None)}
             self.last_tick[mid] = now
-            tasks.append(self._publish(frames_group(mid), tick))
+            self._publish_nowait(frames_group(mid), tick)
         if sb_msgs:
             tasks.append(self.sender.send_messages(sb_msgs))
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -166,8 +171,25 @@ class InterpreterService:
             if isinstance(r, Exception):
                 log.warning("output failed: %s", r)
 
+    def _publish_nowait(self, group: str, payload: dict) -> None:
+        if self.inflight >= MAX_INFLIGHT_PUBLISHES:
+            self.dropped_ticks += 1
+            if self.dropped_ticks % 100 == 1:
+                log.warning("Web PubSub is slow: dropped %d live ticks so far", self.dropped_ticks)
+            return
+        task = asyncio.create_task(self._publish(group, payload))
+        self.bg.add(task)
+        task.add_done_callback(self.bg.discard)
+
     async def _publish(self, group: str, payload: dict) -> None:
-        await self.wps.send_to_group(group, payload, content_type="application/json")  # SDK serializes dicts
+        self.inflight += 1
+        try:
+            await asyncio.wait_for(self.wps.send_to_group(group, payload, content_type="application/json"),
+                                   timeout=PUBLISH_TIMEOUT_S)  # the SDK serializes dicts
+        except Exception as exc:
+            log.debug("tick publish failed: %s", exc)
+        finally:
+            self.inflight -= 1
 
 
 def main() -> None:

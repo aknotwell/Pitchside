@@ -75,6 +75,26 @@ async def watch(api: str, match_id: str, until: float, sink: list[dict]) -> None
                              "latency_ms": time.time() * 1000 - enq})
 
 
+def interpreter_lag(eh_fqdn: str, blob_endpoint: str) -> int:
+    """Unprocessed events for the interpreter consumer group (last enqueued - last checkpoint)."""
+    from azure.eventhub import EventHubConsumerClient
+    from azure.identity import AzureCliCredential
+    from azure.storage.blob import ContainerClient
+
+    cred = AzureCliCredential()
+    client = EventHubConsumerClient(fully_qualified_namespace=eh_fqdn, eventhub_name="match-stream", consumer_group="$Default", credential=cred)
+    blobs = ContainerClient(blob_endpoint, "ehcheckpoints", credential=cred)
+    prefix = f"{eh_fqdn}/match-stream/interpreter/checkpoint/"
+    checkpoints = {b.name.rsplit("/", 1)[-1]: int(b.metadata.get("sequencenumber", -1))
+                   for b in blobs.list_blobs(name_starts_with=prefix, include=["metadata"])}
+    lag = 0
+    with client:
+        for pid in client.get_partition_ids():
+            last = client.get_partition_properties(pid)["last_enqueued_sequence_number"]
+            lag += max(0, last - checkpoints.get(pid, -1))
+    return lag
+
+
 def pct(xs: list[float], p: float) -> float:
     if not xs:
         return float("nan")
@@ -100,6 +120,10 @@ def main() -> None:
     duration = a.minutes * 60 or match_wall_s + 120
     base_seed = int(time.time()) % 50000
 
+    eh, blob = azd("EVENTHUB_FQDN"), azd("STORAGE_BLOB_ENDPOINT")
+    while (lag := interpreter_lag(eh, blob)) > 500:
+        print(f"waiting for the interpreter backlog to drain ({lag} events)...")
+        time.sleep(15)
     print(f"starting {a.matches} matches at {a.speed}x ({a.period_min} min halves, ~{match_wall_s / 60:.1f} min wall each)")
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=a.matches) as pool:
