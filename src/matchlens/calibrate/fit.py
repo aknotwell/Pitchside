@@ -52,7 +52,7 @@ SC_WEIGHTS = {"passes_per_match": 1.0, "pass_completion": 6.0, "shots_per_match"
               "distance_km_per90_median": 1.0, "psv99_kmh_median": 1.0, "sprints_per90_median": 0.7}
 
 KNOBS: dict[str, tuple[float, float]] = {
-    "decision_s[1]": (0.6, 2.2),
+    "decision_s[1]": (0.8, 2.4),
     "carry_s[1]": (0.9, 2.6),
     "shot_bias": (0.05, 1.4),
     "long_shot_pref": (0.0, 0.15),
@@ -73,8 +73,12 @@ KNOBS: dict[str, tuple[float, float]] = {
     "press_effort": (0.5, 0.95),
     "header_chance": (0.05, 0.6),
     "crowd_tackle_boost": (0.0, 2.0),
-    "turnover_weight": (0.5, 3.0),
+    "turnover_weight": (0.2, 2.0),
     "box_space_shot_bonus": (0.0, 0.12),
+    "long_pass_cost": (0.0, 0.03),
+    "clear_cost": (0.0, 0.04),
+    "pass_value_discount": (0.7, 1.4),
+    "control_base": (0.8, 0.97),
     "box_carry_risk": (0.0, 0.35),
     "box_tackle_factor": (0.4, 1.6),
     "restart_scale": (0.7, 2.0),
