@@ -28,7 +28,7 @@ import numpy as np
 
 from matchlens.calibrate.real import SOURCE, targets
 from matchlens.sim.engine import MatchEngine
-from matchlens.sim.params import DEFAULT_PARAMS, params_version
+from matchlens.sim.params import DEFAULT_PARAMS, load_params, params_version
 
 FITTED = Path("src/matchlens/sim/fitted_params.json")
 REPORT = Path("docs/REALISM.md")
@@ -37,12 +37,13 @@ PERIOD_MIN = 15.0
 
 # Soft guard rails: (value, weight). Typical top-flight values per match, both teams.
 NORMS = {
-    "goals_per_match": (2.8, 0.3),
-    "fouls_per_match": (23.0, 0.3),
+    "goals_per_match": (2.8, 0.5),
+    "fouls_per_match": (23.0, 0.5),
     "cards_per_match": (3.8, 0.1),
     "tackles_won_per_match": (38.0, 0.2),
     "throw_ins_per_match": (40.0, 0.2),
     "ball_in_play_share": (0.57, 0.5),
+    "header_share_of_shots": (0.17, 0.3),
 }
 SC_WEIGHTS = {"passes_per_match": 1.0, "pass_completion": 6.0, "shots_per_match": 1.0, "pass_length_mean_m": 1.0,
               "distance_km_per90_median": 1.0, "psv99_kmh_median": 1.0, "sprints_per90_median": 0.7}
@@ -50,7 +51,7 @@ SC_WEIGHTS = {"passes_per_match": 1.0, "pass_completion": 6.0, "shots_per_match"
 KNOBS: dict[str, tuple[float, float]] = {
     "decision_s[1]": (0.6, 2.2),
     "carry_s[1]": (0.9, 2.6),
-    "shot_bias": (0.2, 1.4),
+    "shot_bias": (0.05, 1.4),
     "long_shot_pref": (0.0, 0.08),
     "pass_error_m": (0.3, 1.8),
     "intercept_prob": (0.08, 0.5),
@@ -58,12 +59,17 @@ KNOBS: dict[str, tuple[float, float]] = {
     "carry_keep_logit": (-1.0, 2.0),
     "tackle_rate_per_s": (0.05, 0.8),
     "foul_share_of_tackles": (0.05, 0.45),
-    "card_share_of_fouls": (0.05, 0.3),
+    "card_share_of_fouls": (0.02, 0.3),
     "jog_max_mps": (3.5, 6.5),
     "drift_m": (0.0, 8.0),
     "run_prob_per_s": (0.02, 0.18),
     "max_speed_mps[1]": (8.4, 9.9),
     "steer_gain": (0.5, 1.8),
+    "clear_value": (0.0, 0.03),
+    "take_on_prob": (0.05, 0.6),
+    "press_effort": (0.5, 0.95),
+    "header_chance": (0.05, 0.6),
+    "restart_scale": (0.7, 2.0),
 }
 
 
@@ -85,7 +91,8 @@ def match_stats(args: tuple[dict, int, float]) -> dict:
     out = {
         "passes": len(ps), "completion": float(np.mean([e.outcome == "complete" for e in ps])) if ps else 0.0,
         "pass_lengths": [float(e.qualifiers["length_m"]) for e in ps],
-        "shots": count("shot"), "goals": sum(1 for e in ev if e.type == "shot" and e.outcome == "goal"),
+        "shots": count("shot"), "headers": sum(1 for e in ev if e.type == "shot" and e.qualifiers.get("body_part") == "head"),
+        "goals": sum(1 for e in ev if e.type == "shot" and e.outcome == "goal"),
         "fouls": count("foul"), "cards": count("card"), "tackles": count("tackle"),
         "throw_ins": sum(1 for e in ev if e.type == "ball_out" and e.qualifiers.get("restart") == "throw_in"),
         "in_play": eng.live_frames / max(1, len(ts)), "minutes": 2 * period_min,
@@ -124,6 +131,7 @@ def evaluate(params: dict, seeds: list[int], pool: ProcessPoolExecutor, period_m
         "goals_per_match": m("goals") * scale, "fouls_per_match": m("fouls") * scale, "cards_per_match": m("cards") * scale,
         "tackles_won_per_match": m("tackles") * scale, "throw_ins_per_match": m("throw_ins") * scale,
         "ball_in_play_share": m("in_play"),
+        "header_share_of_shots": max(0.01, m("headers") / max(1e-9, m("shots"))),
         "_pass_lengths": pool_("pass_lengths"), "_psv99": pool_("psv"),
     }
 
@@ -190,6 +198,7 @@ def main() -> None:
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--seeds", type=int, default=12)
     ap.add_argument("--workers", type=int, default=16)
+    ap.add_argument("--warm", action="store_true", help="start from the current fitted parameters")
     a = ap.parse_args()
     t0 = time.time()
     print("loading targets from", SOURCE, flush=True)
@@ -202,7 +211,8 @@ def main() -> None:
     hold_seeds = list(range(901, 901 + a.seeds))
     with ProcessPoolExecutor(a.workers) as pool:
         print("fitting…", flush=True)
-        params, _, _ = coordinate_search(deepcopy(DEFAULT_PARAMS), lambda p: evaluate(p, fit_seeds, pool), tgt, a.rounds)
+        start = load_params() if a.warm else deepcopy(DEFAULT_PARAMS)
+        params, _, _ = coordinate_search(start, lambda p: evaluate(p, fit_seeds, pool), tgt, a.rounds)
         print("validating on held-out seeds…", flush=True)
         after = evaluate(params, hold_seeds, pool)
         before = evaluate(deepcopy(DEFAULT_PARAMS), hold_seeds, pool)
@@ -239,6 +249,7 @@ def main() -> None:
         ("Tackles won per match", "tackles_won_per_match", "{:.0f}"),
         ("Throw-ins per match", "throw_ins_per_match", "{:.0f}"),
         ("Ball in play", "ball_in_play_share", "{:.0%}"),
+        ("Headers, share of shots", "header_share_of_shots", "{:.0%}"),
     ]
     md = [
         "# Synthetic data realism report", "",

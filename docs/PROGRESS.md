@@ -390,3 +390,66 @@ Model tokens are cents per match. The free-trial credit covers it.
   not Chaos Studio cooperates.
 - **My home network** dropped DNS several times during long scripts. Cloud
   components were unaffected. The scripts tolerate these transient failures.
+
+## Checkpoint 8: agent-based match engine (2026-10-09)
+
+Feedback after watching matches: play was predictable, players had no individuality, every
+move looked the same, the game froze while a player had the ball, and midfield carriers
+went unpressed. Measured on the old engine: the ball sat still for more than 1.5 s for
+**61%** of the match, and the carrier's nearest opponent was a median **8.9 m** away
+(more than 10 m for 44% of the time). Events came first and movement was drawn on afterwards,
+so nothing on the pitch affected what happened.
+
+- **New engine** (`src/matchlens/sim/engine.py`): every 0.1 s the 22 players and the ball
+  move together.
+  - The carrier takes a first touch, dribbles or shields while deciding. They choose by
+    weighing passes (with real lane-interception risk), carries (risk from every nearby
+    opponent along the path), shots (xG with blockers), crosses, through balls,
+    clearances and give-and-goes. A softmax tempered by vision and flair makes the choice.
+  - Defenders: the nearest one closes the ball down, and closes tighter the longer the
+    carrier has it. The next one covers the best short option, and the rest mark goal-side.
+    The back line stays goal-side and narrows near the box.
+  - Attackers show for the ball (two supporting spots, chosen for space), make runs in
+    behind (by role) and drift away from markers.
+  - Tackles, take-ons, fouls (penalties in the box), interceptions, aerial duels, headers,
+    saves (catch, parry, corner), rebounds and loose-ball scrambles are all resolved from
+    positions.
+  - Set pieces have shapes (corners, penalties, walls at 9.15 m). Substitutions take off
+    the most tired players. Trailing teams push and press late; leading teams sit deeper.
+- **Players** (`world.py`): roles such as poacher, target forward, false nine, inverted
+  winger, overlapping full-back, deep-lying playmaker and ball-winner. Each has 19
+  trait ratings from 1–99 and a preferred foot.
+  **Teams** have styles: high press, possession, counter-attacking, direct, balanced and low
+  block. Two new formations: 4-2-3-1 and 3-5-2. Everything is in the metadata.
+- **Web:** a Squads tab shows formation, style, roles and each player's top traits.
+  Clicking a player follows them on the pitch.
+- **After:** the ball is still for more than 1.5 s for 34% of the match, almost all of it
+  dead-ball restarts. A carrier is static only 9% of their time on the ball, mostly
+  keepers holding a catch. The nearest opponent is a median **3.4 m** away (more than 10 m
+  for 11% of the time). A full 90-minute match generates in about 8 s, against 36 s for
+  the old engine.
+- **Calibration** (`calibrate/fit.py`) was rewritten for full matches, run in parallel,
+  with SkillCorner targets plus guard rails for typical goals, fouls, cards, throw-ins,
+  ball in play and header share.
+  - It took three fits, with engine fixes in between: too many clearances, penalties and
+    headed chances, and flat-out sprints for every movement.
+  - Three values were then hand-adjusted.
+  - Held-out results, against real values:
+
+    | Metric | Error |
+    |---|---|
+    | Passes | +3% |
+    | Pass completion | −4% |
+    | Shots | −2% |
+    | Distance per 90 | +4% |
+    | Pass length | +23% |
+    | Sprints | +34% |
+    | Peak speed | −8% |
+
+    Goals are 2.4 per match, fouls 25 and headers 15% of shots. See `docs/REALISM.md`.
+- **Tests:** individuality, the ball keeps moving while owned, and the carrier is engaged.
+  22 pass.
+- **Known gaps:** passes are still too long, there's no offside law, and team shapes are
+  rule-based. A replay re-simulates from the seed, so replays of matches played on the old
+  engine would come out differently. The stored replay blobs are self-contained and still
+  play.

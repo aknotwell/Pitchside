@@ -64,7 +64,7 @@ flowchart LR
 
 | Stage (rule 4.1) | What MatchLens does |
 |---|---|
-| **Ingest** | A seeded simulator (ACA Job) plays a fictional match at 1–30× speed into Event Hubs: passes, carries, pressures, tackles, interceptions, shots with xG and shot speed, fouls, cards, subs, plus 10 Hz tracking of 22 players and the ball |
+| **Ingest** | A seeded, agent-based simulator (ACA Job) plays a fictional match at 1–30× speed into Event Hubs. Players have roles and 1–99 traits and teams have tactical styles; pressure, tackles, interceptions and chances emerge from positions. Events (passes, carries, pressures, tackles, interceptions, shots with xG and shot speed, fouls, cards, subs) plus 10 Hz tracking of 22 players and the ball |
 | **Interpret** | Deterministic, idempotent metrics: xG, possession, pass accuracy, final-third entries, PPDA (match and rolling), momentum, a control-vs-chaos index, distance, top speed and sprints. A replay gives byte-identical state (tested) |
 | **Explain** | Detectors raise moments (goal, big chance, momentum swing, pressing surge, half time and full time) with an **evidence pack**. An Agent Framework workflow (Editor → Explainer → Verifier → Director) writes the *why* |
 | **Render** | Machine-readable `OverlayCue`s with `display_at_s`, TTL, priority and template, timed against a 10 s broadcast delay so agent latency is invisible. Shown on a live 2D pitch with lower-thirds, player speed tags and recap panels |
@@ -122,7 +122,7 @@ flowchart LR
 | Agents keep up | Agent-written, verified explanations: **p50 10.2 s**. The 10 s broadcast delay hides it. p95 58 s during scale-from-zero | same |
 | Survives a crash | Storyteller killed mid-workflow; ACA restarts it, the Service Bus session is reclaimed, and MAF resumes from the Cosmos checkpoint in **51 ms** without calling the model again | [`docs/PROGRESS.md`](docs/PROGRESS.md#checkpoint-3-deployed-to-azure-and-verified-end-to-end-2026-10-09) |
 | Grounded explanations | 4/4 sample moments passed the code verifier first time; injected bad numbers and names are rejected (tests) | `tests/test_storyteller.py` |
-| Realistic synthetic data | Calibrated to SkillCorner open data: passes/match **+2%**, pass completion **−1%**, sprints/90 **+1%**, peak speed **−4%** (held-out seeds) | [`docs/REALISM.md`](docs/REALISM.md) |
+| Realistic synthetic data | Agent-based engine calibrated to SkillCorner open data: passes/match **+3%**, pass completion **−4%**, shots **−2%**, distance/90 **+4%** (held-out seeds); goals, fouls and headers in normal ranges | [`docs/REALISM.md`](docs/REALISM.md) |
 
 ## Hero technologies
 

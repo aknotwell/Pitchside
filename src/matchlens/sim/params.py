@@ -32,7 +32,7 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "pass_len_penalty_per_m": 0.004,
     "pass_pressure_penalty": 0.12,
     "pass_error_m": 1.2,
-    "clear_value": 0.03,
+    "clear_value": 0.012,
     "pass_max_len_m": [22.0, 62.0],  # by vision, low -> high
     "intercept_reach_m": 1.1,
     "intercept_prob": 0.35,  # per 0.1 s step with the ball within reach
@@ -42,7 +42,11 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "jockey_m": [1.0, 3.2],  # how tight the first defender stands off, high press -> low
     "tackle_rate_per_s": 0.3,
     "tackle_win_logit": 0.3,
+    "take_on_prob": 0.35,  # per tick, when the carrier runs straight at a goal-side defender
+    "press_effort": 0.7,  # share of top speed for the pressing defender (more for pressing teams)
     "take_on_logit": 0.0,  # extra edge for the defender when the carrier runs straight at them
+    "box_foul_factor": 0.08,
+    "header_chance": 0.25,  # a won cross in the box becomes a header at goal (scaled by heading)
     "foul_share_of_tackles": 0.22,
     "card_share_of_fouls": 0.13,
     # Shots: xG = sigmoid(a + b*dist + c*angle)
@@ -55,6 +59,7 @@ DEFAULT_PARAMS: dict[str, Any] = {
     # Restarts (seconds the ball is dead)
     "restart_s": {"throw_in": [5, 11], "goal_kick": [11, 19], "free_kick": [14, 26], "corner": [16, 26],
                   "kickoff": [40, 60], "sub": [12, 22], "penalty": [45, 70]},
+    "restart_scale": 1.0,
     "stoppage_s": [60, 240],
     # Physical
     "max_speed_mps": [7.4, 9.5],

@@ -475,7 +475,7 @@ class MatchEngine:
         self.poss = team
         self.run_until[:] = 0.0
         if delay is None:
-            delay = rng.uniform(*p["restart_s"][kind])
+            delay = rng.uniform(*p["restart_s"][kind]) * p["restart_scale"]
         delay += self._apply_subs(t)
         spot = np.array(spot, dtype=float)
         self.restart = _Restart(kind, team, spot, t + delay, self._taker(kind, team, spot))
@@ -636,12 +636,13 @@ class MatchEngine:
                     continue
                 # Running at a defender who is in the way is a take-on: it is settled now.
                 rel = self.pos[j] - self.pos[i]
-                if d[o] < 1.3 and sp_i > 1.5 and (rel @ v) / (sp_i * (np.linalg.norm(rel) + 1e-6)) > 0.4:
+                if (d[o] < 1.3 and sp_i > 1.5 and (rel @ v) / (sp_i * (np.linalg.norm(rel) + 1e-6)) > 0.4
+                        and rng.random() < p["take_on_prob"]):
                     self._tackle(t, i, j, take_on=True)
                     return
                 rate = p["tackle_rate_per_s"] * (0.45 + self.tr["aggression"][j]) * (0.8 + 0.5 * press)
                 # Defenders step in when the carrier gets near goal; they stay on their feet in the box.
-                rate *= (1.0 + 2.0 * danger) * (0.6 if in_box else 1.0)
+                rate *= (1.0 + 0.5 * danger) * (0.6 if in_box else 1.0)
                 if rng.random() < rate * self.dt:
                     self._tackle(t, i, j)
                     return
@@ -660,10 +661,13 @@ class MatchEngine:
         agg, tack = self.tr["aggression"][j], self.tr["tackling"][j]
         p_foul = p["foul_share_of_tackles"] * (0.5 + agg) * (1.5 - tack) * (0.5 if self.yellow[j] else 1.0)
         if SIGN[tid] * b[0] > BOX_X and abs(b[1]) < BOX_Y:
-            p_foul *= 0.3
+            p_foul *= p["box_foul_factor"]  # defenders know a foul here is a penalty
+        if take_on:  # a defender standing their ground fouls less than one lunging in
+            p_foul *= 0.5
         if rng.random() < p_foul:
             self._end_carry(t)
-            self._emit(t, "foul", opp, j, x=b[0], y=b[1], related_player_id=self.ids[i])
+            self._emit(t, "foul", opp, j, x=b[0], y=b[1], related_player_id=self.ids[i],
+                       qualifiers={"challenge": "take_on" if take_on else "tackle"})
             if not self.yellow[j] and rng.random() < p["card_share_of_fouls"] * (0.6 + agg):
                 self.yellow[j] = True
                 self._emit(t + 1.0, "card", opp, j, outcome="yellow")
@@ -679,7 +683,8 @@ class MatchEngine:
                         - 0.5 * (self.tr["composure"][i] - 0.5))
         if rng.random() < p_win:
             self._end_carry(t)
-            self._emit(t, "tackle", opp, j, x=b[0], y=b[1], outcome="won", related_player_id=self.ids[i])
+            self._emit(t, "tackle", opp, j, x=b[0], y=b[1], outcome="won", related_player_id=self.ids[i],
+                       qualifiers={"challenge": "take_on" if take_on else "tackle"})
             if rng.random() < 0.55 + 0.3 * self.tr["first_touch"][j]:
                 self._gain(j, t)
             else:  # poked away: a loose ball either side can win
@@ -814,7 +819,8 @@ class MatchEngine:
                 acts.append(("pass", j, T_[n].copy(), bool(lofted[n]), float(speed[n]), k_, float(p_succ[n]), pr))
 
         # --- clearance: deep in your own third, sometimes you just get it away
-        if sp is None and not self.in_hands and not self.is_gk[i] and b[0] < -HALF_LENGTH + 30:
+        in_own_box = b[0] < -BOX_X and abs(b[1]) < BOX_Y
+        if sp is None and not self.in_hands and not self.is_gk[i] and b[0] < -HALF_LENGTH + 30 and (pr > 0.4 or in_own_box):
             side = 1.0 if b[1] >= 0 else -1.0
             tgt = np.array([b[0] + rng.uniform(30, 50), side * rng.uniform(12, 33)])
             mates = [j for j in st.on if j != i]
@@ -1038,7 +1044,7 @@ class MatchEngine:
               - 0.08 * f.lofted - 0.04 * (f.speed > 20))
         xa = SIGN[f.team] * f.end[0]
         box = xa > BOX_X and abs(f.end[1]) < BOX_Y
-        if f.lofted and box and rng.random() < 0.55:
+        if f.lofted and box and rng.random() < p["header_chance"] * (0.5 + self.tr["heading"][winner]):
             self._gain(winner, t, how="header_chance")
             return
         if rng.random() < pc:
@@ -1308,12 +1314,12 @@ class MatchEngine:
                 jockey = lo + (jockey - lo) * math.exp(-(t - self.gained_t) / 2.5)
                 g = own_goal - b
                 tgt[first] = b + g / (np.linalg.norm(g) + 1e-6) * jockey
-                urgent[first] = min(1.0, 0.75 + 0.2 * press)
+                urgent[first] = min(1.0, p["press_effort"] + 0.15 * press)
                 engaged.add(first)
                 second = out[order[1]]
                 if (press > 0.65 and bx_own > -10 or near_goal) and d_sel[order[1]] < radius:
                     tgt[second] = b + g / (np.linalg.norm(g) + 1e-6) * (jockey + 1.5) + np.array([0.0, 2.5])
-                    urgent[second] = 0.75
+                    urgent[second] = p["press_effort"]
                     engaged.add(second)
                 else:  # cover the most dangerous short option
                     att = np.array([i for i in self.ts[other(tid)].on if i != self.owner])
