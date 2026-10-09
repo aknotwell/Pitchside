@@ -1,0 +1,195 @@
+{
+ "summary": {
+  "moments": 8,
+  "variants_scored": 16,
+  "groundedness_mean": 4.75,
+  "coherence_mean": 3.88,
+  "agent_rate": 0.88,
+  "p50_ms": 9445,
+  "p95_ms": 19558
+ },
+ "checks": {
+  "groundedness_mean": true,
+  "coherence_mean": true,
+  "agent_rate": true,
+  "p95_ms": true
+ },
+ "rows": [
+  {
+   "moment": "eval-501-e00308-goal",
+   "kind": "goal",
+   "persona": "analyst",
+   "source": "agent",
+   "ms": 9445,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately summarizes the key details from the context. It mentions the long, patient move by Copperfield lasting 34 seconds with 7 passes, starting from a turnover, gaining 73 meters towards the goal. It correctly identifies Aldo Ellery as the scorer with a 27.9m shot at 101 km/h speed, notes the low shot xG of 0.01, and states the team xG at 0.15. The response is precise, includes all relevant details, and does not introduce any information not present in the context. Therefore, it is fully grounded and complete.",
+   "text": "Long, patient Copperfield move ends in Ellery strike. A 34s, 7-pass sequence that started from a turnover gained 73m of progression before Aldo Ellery\u2019s 27.9m shot (shot speed 101 km/h) produced a low-probability finish (shot xG 0.01) and puts Copperfield\u2019s team xG at 0.15."
+  },
+  {
+   "moment": "eval-501-e00308-goal",
+   "kind": "goal",
+   "persona": "casual",
+   "source": "agent",
+   "ms": 9445,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the key details from the context. It mentions Aldo Ellery scoring for Copperfield, the score becoming 0-1, the move starting from a turnover, the 7-pass sequence lasting 34 seconds, the shot distance of 27.9 meters, and the shot speed of 101 km/h. The response is precise and includes all relevant details without adding any unrelated or incorrect information. Therefore, it is fully grounded and complete based on the context provided.",
+   "text": "Ellery fires Copperfield ahead. After a turnover, Copperfield worked a 7-pass move over 34s to set up Aldo Ellery, whose long 27.9m shot flew in at 101 km/h to make it 0\u20131."
+  },
+  {
+   "moment": "eval-501-e00760-half_time",
+   "kind": "half_time",
+   "persona": "analyst",
+   "source": "agent",
+   "ms": 19558,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the key details from the context. It mentions Copperfield leading 2-0, which matches the score given. It correctly compares the xG values (0.89 vs 0.22) and the shots count (9 vs 2), showing Copperfield's attacking advantage. The response also notes Copperfield's 78% pass accuracy and Northgate's 44% possession, which aligns with the context data. The interpretation that Copperfield combined quality passing with efficient chance creation is a reasonable summary of the stats provided. The response does not introduce any incorrect information and covers the main points relevant to the match status at half time. However, it does not mention some other details like PPDA values or Aldo Ellery's top speed, but these are less central to the summary. Overall, the response is thorough and grounded in the context without adding unrelated information.",
+   "text": "Copperfield control, Northgate limited chances. Copperfield lead 2-0 backed by higher xG (0.89 vs 0.22) and 9 shots to 2, reflecting their attacking edge; their 78% pass accuracy and 44% possession for Northgate suggest Copperfield combined quality passing with efficient chance creation."
+  },
+  {
+   "moment": "eval-501-e00760-half_time",
+   "kind": "half_time",
+   "persona": "casual",
+   "source": "agent",
+   "ms": 19558,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the score (Copperfield 2-0 Northgate United) and the shot count (9 shots for Copperfield, 2 for Northgate United) from the context. It also correctly interprets that Copperfield is in control and has earned the lead at half time. The response does not mention other details such as possession, pass accuracy, or Aldo Ellery's top speed, but it fully addresses the main points relevant to the match status at half time. Therefore, the response is fully grounded and complete based on the provided context.",
+   "text": "Copperfield in control at half. Copperfield are 2-0 up and have had far more chances (9 shots to 2), so they\u2019ve earned this lead heading into the break."
+  },
+  {
+   "moment": "eval-501-e00902-big_chance",
+   "kind": "big_chance",
+   "persona": "analyst",
+   "source": "agent",
+   "ms": 7652,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately references the key details from the context, including Aldo Ellery missing a high-value chance with a 0.45 xG shot from 7.5 meters, the shot speed of 83.1 km/h, the move duration of 4 seconds, and the turnover start. It also correctly states the team xG of 1.53 and the score being 0-2. The response adds a reasonable interpretation by calling it a 'failed conversion on a clear-cut opportunity in a quick counter,' which is consistent with the context's data. There is no incorrect or unrelated information, and the response is detailed and specific, covering all relevant points from the context. Therefore, the response is fully grounded and complete.",
+   "text": "High-value miss from close range. Aldo Ellery wasted a 0.45 xG chance from 7.5 m after a 4 s turnover transition; the shot was struck at 83.1 km/h and leaves Copperfield with 1.53 team xG despite being 2-0 up. It shows a failed conversion on a clear-cut opportunity in a quick counter."
+  },
+  {
+   "moment": "eval-501-e00902-big_chance",
+   "kind": "big_chance",
+   "persona": "casual",
+   "source": "agent",
+   "ms": 7652,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the key details from the context. It mentions Aldo Ellery missing a big chance, the xG value of 0.45, the shot distance of 7.5 meters, the quick 4-second turnover move, and the team xG of 1.53. It also correctly states the score as 2-0 in favor of Copperfield. The response is precise, includes all relevant details from the context, and does not introduce any incorrect or unrelated information. Therefore, it is fully grounded and complete.",
+   "text": "Big chance goes begging. Aldo Ellery missed a great 0.45 xG opportunity from 7.5 m after a quick 4 s turnover move, leaving Copperfield still on 1.53 team xG while leading 2-0."
+  },
+  {
+   "moment": "eval-501-e01505-full_time",
+   "kind": "full_time",
+   "persona": "analyst",
+   "source": "fallback",
+   "ms": 12567,
+   "groundedness": 3.0,
+   "coherence": 3.0,
+   "groundedness_reason": "Let's think step by step: The response accurately states the full-time score as 0-2, which matches the context. It also correctly mentions the expected goals (xG) values of 0.94 for Northgate United and 2.14 for Copperfield, which are present in the context. However, the response is very brief and omits other relevant details such as shots, possession, pass accuracy, PPDA, and the top speed of Luca Lindqvist, all of which are included in the context. While the response is accurate, it is quite vague and incomplete in terms of the full information provided. Therefore, it fits best as an accurate but vague response rather than a fully complete one.",
+   "text": "Full-time story. It's 0-2. Expected goals 0.94 to 2.14."
+  },
+  {
+   "moment": "eval-501-e01505-full_time",
+   "kind": "full_time",
+   "persona": "casual",
+   "source": "fallback",
+   "ms": 12567,
+   "groundedness": 3.0,
+   "coherence": 3.0,
+   "groundedness_reason": "Let's think step by step: The response accurately states the full-time score as 0-2, which matches the context. It also correctly mentions the expected goals (xG) values of 0.94 for Northgate United and 2.14 for Copperfield, which are present in the context. However, the response is very brief and omits other relevant details such as shots, possession, pass accuracy, PPDA, and the top speed of Luca Lindqvist, all of which are included in the context. While the response is accurate, it is quite vague and incomplete in terms of the full information provided. Therefore, it fits best as an accurate but vague response rather than a fully complete one.",
+   "text": "Full-time story. It's 0-2. Expected goals 0.94 to 2.14."
+  },
+  {
+   "moment": "eval-502-e01343-pressing_surge",
+   "kind": "pressing_surge",
+   "persona": "analyst",
+   "source": "agent",
+   "ms": 13208,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the context by noting that Ironvale Athletic increased their pressing intensity late in the match, as indicated by the drop in PPDA from 11.54 to 5.67 in the last 8 minutes. It also correctly mentions the 6 high defensive actions during this period and the 74 turnovers by Copperfield, as well as Copperfield's pass accuracy of 0.82. The response ties these facts together to explain the tactical situation without adding any incorrect or unrelated information. Therefore, it is fully grounded and complete based on the context provided.",
+   "text": "Ironvale increase pressing intensity late on. Ironvale Athletic have cut PPDA from 11.54 to 5.67 in the last 8 minutes while recording 6 high defensive actions, forcing pressure on Copperfield\u2014who\u2019ve already made 74 turnovers this match\u2014aiming to exploit their 0.82 pass accuracy under duress."
+  },
+  {
+   "moment": "eval-502-e01343-pressing_surge",
+   "kind": "pressing_surge",
+   "persona": "casual",
+   "source": "agent",
+   "ms": 13208,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the context by mentioning Ironvale Athletic increasing their pressing intensity, as indicated by the drop in PPDA from 11.54 to 5.67. It also correctly notes the 6 high defensive actions in the last 8 minutes and the 74 turnovers by Copperfield. The response ties these details together to explain how Ironvale Athletic is pressing hard to win the ball back. All relevant details from the context are included without adding unrelated or incorrect information, making the response fully grounded and complete.",
+   "text": "Ironvale press hard to win it. Ironvale Athletic have tightened their press late, dropping PPDA to 5.67 and piling on 6 high defensive actions to trouble Copperfield, who\u2019ve already given the ball away 74 times."
+  },
+  {
+   "moment": "eval-501-e00349-goal",
+   "kind": "goal",
+   "persona": "analyst",
+   "source": "agent",
+   "ms": 7333,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects all the key details provided in the context. It mentions the clinical finish after a turnover, the player Aldo Ellery scoring for Copperfield at minute 21, the quick 6-second move, the 5.3m shot distance, the 0.53 xG of the shot, the team xG of 0.83, the 8m gained towards goal, and the shot speed of 70.6 km/h. There is no extraneous or incorrect information, and the response is complete and precise based on the context.",
+   "text": "Clinical finish after a turnover. Aldo Ellery finishes a quick, 6s turnover move from 5.3m with a 0.53 xG strike, adding to Copperfield\u2019s team xG of 0.83; the attack gained 8m towards goal and the shot left the boot at 70.6 km/h."
+  },
+  {
+   "moment": "eval-501-e00349-goal",
+   "kind": "goal",
+   "persona": "casual",
+   "source": "agent",
+   "ms": 7333,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the key details from the context. It mentions Aldo Ellery scoring for Copperfield at minute 21, which aligns with the context. The response correctly states the move started from a turnover and lasted 6 seconds, matching the move duration and origin. It includes the shot distance of about 5.3 meters and the shot xG of 0.53, indicating a strong chance, which is consistent with the context. The response also correctly updates the score to 2-0, which matches the context's score. The response is precise, includes all relevant details, and does not introduce any incorrect or extraneous information. Therefore, it is fully grounded and complete based on the context provided.",
+   "text": "Ellery taps in after quick turnover. Aldo Ellery converts a turnover in a swift 6\u2011second move from about 5.3m, giving Copperfield a strong chance (0.53 xG) and making it 2\u20130."
+  },
+  {
+   "moment": "eval-502-e00740-half_time",
+   "kind": "half_time",
+   "persona": "analyst",
+   "source": "agent",
+   "ms": 6055,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the context by mentioning the halftime score of 0-0 and the fact that Copperfield is dominating in terms of shots (11 vs 1) and expected goals (0.55 vs 0.17). It also correctly notes Copperfield's possession (53%) and pass accuracy (81%) compared to Ironvale Athletic's pass accuracy (78%). The response explains Ironvale's defensive compactness by referencing their lower PPDA (12.11), which aligns with the context data. The response is detailed, precise, and does not introduce any information outside the context. It fully addresses the key statistics and the match situation at halftime, making it a complete and grounded summary.",
+   "text": "Copperfield dominate territory but can\u2019t find a goal. Copperfield lead the metrics: 11 shots and 0.55 xG to Ironvale\u2019s 1 shot and 0.17 xG, with 53% possession and 81% pass accuracy, yet the score remains 0-0\u2014Ironvale\u2019s lower PPDA (12.11) shows they\u2019re compact defensively and limiting clear chances."
+  },
+  {
+   "moment": "eval-502-e00740-half_time",
+   "kind": "half_time",
+   "persona": "casual",
+   "source": "agent",
+   "ms": 6055,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the context by mentioning the halftime score of 0-0 and the fact that Copperfield had more chances with 11 shots. It also correctly notes Ironvale's compact defense, supported by the lower PPDA value (12.11 for Ironvale vs. 19.56 for Copperfield), which aligns with the context. The response includes relevant statistics from the context such as shots and PPDA, and it explains the situation without adding unrelated or incorrect information. However, it does not mention other details like possession, pass accuracy, or top speed, but these are not necessary for a complete understanding of the first half summary. Overall, the response is fully grounded and complete based on the provided context.",
+   "text": "A frustrating first half for Copperfield. Copperfield have pressed and had far more chances (11 shots) but it\u2019s still 0-0 at half; Ironvale\u2019s compact defence (lower PPDA) has kept them out."
+  },
+  {
+   "moment": "eval-501-e01301-big_chance",
+   "kind": "big_chance",
+   "persona": "analyst",
+   "source": "agent",
+   "ms": 4967,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the key details from the context. It mentions Aldo Ellery missing a big chance, the xG value of 0.42, the shot distance of 7.9 m, the turnover start, the move duration of 3 seconds, the absence of passes, and the team xG of 1.95. It also correctly interprets the situation as a high-quality chance that could have reduced the deficit, which aligns with the score being 0-2 in the context. The response is thorough, precise, and does not introduce any information not present in the context. Therefore, it is fully grounded and complete.",
+   "text": "Big chance wasted from close range. Aldo Ellery missed a 0.42 xG opportunity from 7.9 m after a turnover; the move lasted 3 s with no passes, and Copperfield\u2019s team xG remains 1.95 \u2014 a clear high-quality chance that could\u2019ve reduced the deficit."
+  },
+  {
+   "moment": "eval-501-e01301-big_chance",
+   "kind": "big_chance",
+   "persona": "casual",
+   "source": "agent",
+   "ms": 4967,
+   "groundedness": 5.0,
+   "coherence": 4.0,
+   "groundedness_reason": "Let's think step by step: The response accurately reflects the key details from the context. It mentions Aldo Ellery missing a big chance, the xG value of 0.42, the shot distance of about 8 meters, and the quick 3-second turnover move. It also correctly states the score remains 0-2 with Copperfield trailing. The response is precise, includes all relevant details from the context, and does not introduce any incorrect or extraneous information. Therefore, it is fully grounded and complete.",
+   "text": "Great chance to get a goal back. Aldo Ellery missed a big chance worth 0.42 xG from about 8 m after a quick 3\u2011second turnover move, leaving Copperfield still trailing 2\u20130."
+  }
+ ]
+}

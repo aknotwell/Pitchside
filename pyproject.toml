@@ -26,7 +26,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=9.1", "pytest-asyncio>=1.0", "ruff>=0.14"]
+dev = [
+    "azure-ai-evaluation>=1.18",
+    "pytest>=9.1",
+    "pytest-asyncio>=1.0",
+    "ruff>=0.14",
+]
 
 [build-system]
 requires = ["hatchling"]

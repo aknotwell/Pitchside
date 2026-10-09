@@ -27,6 +27,11 @@ jobs:
         run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider github --tenant-id "$AZURE_TENANT_ID"
       - run: azd provision --no-prompt
       - run: azd deploy --no-prompt
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Evaluation gate (Foundry evaluators + code verifier)
+        run: uv sync --frozen && uv run python scripts/evaluate.py --seeds 501 502 --max-moments 8
       - name: Smoke test
         run: |
           API_URL=$(azd env get-value API_URL)

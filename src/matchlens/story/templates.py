@@ -65,11 +65,16 @@ def _text(m: Moment, persona: str, lang: str) -> str:
         return (f"{team} are pressing higher: PPDA {ppda} over 8 minutes, down from {before}." if persona == "analyst"
                 else f"{team} are hunting the ball high up the pitch and forcing mistakes.")
     score = _ev(m, "score", "")
+    home, away = m.names.get("h", "Home"), m.names.get("a", "Away")
+    xh, xa, sh, sa = _ev(m, "xg_home"), _ev(m, "xg_away"), _ev(m, "shots_home"), _ev(m, "shots_away")
     if lang == "es":
-        return f"Marcador {score}. xG {_ev(m, 'xg_home')} a {_ev(m, 'xg_away')}."
+        return f"{home} {score} {away}. xG {xh} a {xa}; tiros {sh} a {sa}."
     if lang == "ja":
-        return f"スコア{score}。xG {_ev(m, 'xg_home')}対{_ev(m, 'xg_away')}。"
-    return f"It's {score}. Expected goals {_ev(m, 'xg_home')} to {_ev(m, 'xg_away')}."
+        return f"{home} {score} {away}。xG {xh}対{xa}、シュート{sh}対{sa}。"
+    if persona == "analyst":
+        return f"{home} {score} {away}. Expected goals {xh} to {xa}, from {sh} and {sa} shots."
+    better = home if float(xh or 0) > float(xa or 0) else away
+    return f"{home} {score} {away}. {better} created the better chances ({xh} vs {xa} xG)."
 
 
 KEYS = {
@@ -77,8 +82,8 @@ KEYS = {
     "big_chance": ["xg", "chain_passes", "chain_duration_s", "started_from"],
     "momentum_swing": ["threat_10m", "opp_threat_10m"],
     "pressing_surge": ["ppda_8m", "ppda_match"],
-    "half_time": ["score", "xg_home", "xg_away"],
-    "full_time": ["score", "xg_home", "xg_away"],
+    "half_time": ["score", "xg_home", "xg_away", "shots_home", "shots_away"],
+    "full_time": ["score", "xg_home", "xg_away", "shots_home", "shots_away"],
 }
 
 
