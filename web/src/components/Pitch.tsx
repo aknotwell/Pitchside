@@ -1,8 +1,30 @@
+import { useEffect, useState } from "react";
 import type { Cue, Frame, MatchMeta } from "../types";
 
 const L = 105, W = 68;
 
-export function Pitch({ frame, meta, cues, follow }: { frame: Frame | null; meta?: MatchMeta | null; cues: Cue[]; follow?: string | null }) {
+/** Positions sampled on every animation frame, like the 3D view. The app only refreshes `frame` at
+ *  ~15 fps, which made the 2D pitch look choppy next to 3D. Without `sample`, `frame` is drawn. */
+function useSampledFrame(frame: Frame | null, sample?: () => Frame | null): Frame | null {
+  const [sampled, setSampled] = useState<Frame | null>(null);
+  useEffect(() => {
+    if (!sample) return;
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const next = sample();
+      setSampled((prev) => (prev && next && prev.t_s === next.t_s ? prev : next));  // paused: no redraw
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [sample]);
+  return sample ? sampled ?? frame : frame;
+}
+
+export function Pitch({ frame: fed, sample, meta, cues, follow }: {
+  frame: Frame | null; sample?: () => Frame | null; meta?: MatchMeta | null; cues: Cue[]; follow?: string | null;
+}) {
+  const frame = useSampledFrame(fed, sample);
   const numbers = new Map<string, number>();
   meta?.home.players.forEach((p) => numbers.set(p.id, p.number));
   meta?.away.players.forEach((p) => numbers.set(p.id, p.number));
