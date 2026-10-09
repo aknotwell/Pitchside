@@ -12,7 +12,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 select { font: inherit; color: inherit; background: #1b2633; border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
 .picker { position: relative; }
 .picker-btn { max-width: min(420px, 80vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.picker-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 300px; max-width: min(460px, calc(100vw - 32px));
+.picker-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 100%; max-width: min(460px, calc(100vw - 32px));
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
 .picker-menu button { display: block; width: 100%; text-align: left; border: 0; background: none; border-radius: 6px; padding: 6px 8px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -20,6 +20,7 @@ select { font: inherit; color: inherit; background: #1b2633; border: 1px solid v
 .picker-group { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 8px 8px 4px; }
 .picker-empty { color: var(--muted); padding: 4px 8px 6px; font-size: 13px; }
 .picker-live { color: var(--danger); font-size: 10px; vertical-align: 1px; }
+.picker-match .picker-menu { min-width: 300px; }
 .picker-replays { max-height: min(200px, 28vh); overflow-y: auto; }
 .app { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
 header { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }

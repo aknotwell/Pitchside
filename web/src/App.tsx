@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
+import { Choice, Dropdown } from "./components/Dropdown";
 import { isLive, MatchPicker } from "./components/MatchPicker";
 import { Overlay } from "./components/Overlay";
 import { Pitch } from "./components/Pitch";
@@ -120,9 +121,11 @@ function Main({ params }: { params: URLSearchParams }) {
                      onReplay={(id) => { setReplayId(id); setReplayPaused(false); }} />
         {replayId && (
           <>
-            <select aria-label="Replay speed" value={replaySpeed} onChange={(e) => setReplaySpeed(Number(e.target.value))}>
-              {[1, 4, 10, 20].map((s) => <option key={s} value={s}>{s}× replay</option>)}
-            </select>
+            <Dropdown label={`${replaySpeed}× replay`} ariaLabel="Replay speed">
+              {(close) => [1, 4, 10, 20].map((s) => (
+                <Choice key={s} on={s === replaySpeed} onPick={() => { setReplaySpeed(s); close(); }}>{s}× replay</Choice>
+              ))}
+            </Dropdown>
             <button aria-label={replayPaused ? "Play replay" : "Pause replay"} title="Space" onClick={() => setReplayPaused((p) => !p)}>
               {replayPaused ? <><span aria-hidden="true">▶</span> Play</> : <><span aria-hidden="true">❚❚</span> Pause</>}
             </button>
