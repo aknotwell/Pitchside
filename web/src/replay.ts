@@ -25,7 +25,8 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
   // so it lives here rather than in the playback effect's dependencies.
   const vclock = useRef<{ offset: number; pausedAt: number | null }>({ offset: 0, pausedAt: null });
   const vt = (now: number) => (vclock.current.pausedAt ?? now) - vclock.current.offset;
-  const start = useRef<{ wall: number; t0: number }>({ wall: 0, t0: 0 });
+  // Playhead anchor: at playback time `wall` the replay was at match time `t0`, moving at `speed`.
+  const start = useRef<{ wall: number; t0: number; speed: number }>({ wall: 0, t0: 0, speed });
   const shownAt = useRef<Map<string, number>>(new Map());
   const finalRef = useRef<MatchState | null>(finalState);
   finalRef.current = finalState;  // read inside the loop; changing it must not restart playback
@@ -41,6 +42,13 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
     else if (!paused && c.pausedAt !== null) { c.offset += now - c.pausedAt; c.pausedAt = null; }
   }, [paused]);
 
+  useEffect(() => {  // a new speed carries on from the current position instead of restarting
+    const s = start.current;
+    if (s.speed === speed) return;
+    const now = vt(performance.now() / 1000);
+    start.current = { wall: now, t0: s.t0 + (now - s.wall) * s.speed, speed };
+  }, [speed]);
+
   useEffect(() => {
     if (!matchId) return;
     let stopped = false;
@@ -53,7 +61,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
         t_s: t, ball: [bx, by, bz ?? 0] as [number, number, number],
         players: p.playerIds.flatMap((id, j) => (pl[j] ? [{ id, x: pl[j]![0], y: pl[j]![1] }] : [])),
       }));
-      start.current = { wall: vt(performance.now() / 1000), t0: p.frames[0]?.[0] ?? 0 };
+      start.current = { wall: vt(performance.now() / 1000), t0: p.frames[0]?.[0] ?? 0, speed: start.current.speed };
       setLive((l) => ({ ...l, connected: true }));
     }).catch((e) => console.warn("replay load failed", e));
     const playheadAt = (wall: number) => {
@@ -61,8 +69,9 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       if (!p || !p.frames.length) return null;
       const now = vt(wall);
       const end = p.frames[p.frames.length - 1][0];
-      let playhead = start.current.t0 + (now - start.current.wall) * speed;
-      if (playhead > end + 20) { start.current = { wall: now, t0: p.frames[0][0] }; shownAt.current = new Map(); playhead = p.frames[0][0]; }
+      const s = start.current;
+      let playhead = s.t0 + (now - s.wall) * s.speed;
+      if (playhead > end + 20) { start.current = { ...s, wall: now, t0: p.frames[0][0] }; shownAt.current = new Map(); playhead = p.frames[0][0]; }
       return playhead;
     };
     sampler.current = () => {
@@ -105,11 +114,11 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       }
       history.sort((x, y) => y.display_at_s - x.display_at_s);
       active.sort((x, y) => x.priority - y.priority);
-      setLive({ connected: true, playhead, liveEdge: playhead, frame, state, cues: active, history: history.slice(0, 40), speed, sample });
+      setLive({ connected: true, playhead, liveEdge: playhead, frame, state, cues: active, history: history.slice(0, 40), speed: start.current.speed, sample });
     };
     raf = requestAnimationFrame(tick);
     return () => { stopped = true; cancelAnimationFrame(raf); sampler.current = () => null; };
-  }, [matchId, persona, lang, speed]);
+  }, [matchId, persona, lang]);
 
   return live;
 }
