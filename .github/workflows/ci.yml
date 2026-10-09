@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  python:
+  backend:  # Python services, engine and tests (the required check on main)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

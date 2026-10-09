@@ -99,7 +99,7 @@ def match_stats(args: tuple[dict, int, float]) -> dict:
     }
     fps = eng.fps
     dist90, psv, sprints90 = [], [], []
-    for j, pid in enumerate(ids):
+    for j in range(len(ids)):
         if eng.players[j].position == "GK":
             continue
         xy = pl[:, j, :].astype(float)

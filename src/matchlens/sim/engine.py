@@ -263,7 +263,7 @@ class MatchEngine:
         st.def_dx = np.array([DEF_DX.get(r, 0.0) for r in roles])
         st.run_rate = np.array([RUN_RATE.get(r, 0.0) if st.slot_pos[s] not in ("GK", "CB") else 0.0
                                 for s, r in enumerate(roles)])
-        for s, r in enumerate(roles):
+        for s in range(len(roles)):
             if st.run_rate[s] == 0.0 and st.slot_pos[s] in ("CM", "RW", "LW", "RM", "LM", "ST"):
                 st.run_rate[s] = 0.6
 
@@ -762,7 +762,7 @@ class MatchEngine:
         if sp == "throw_in":
             max_len = 22.0
         cands = []
-        for slot, j in enumerate(st.on):
+        for j in st.on:
             if j == i:
                 continue
             rpos = self.pos[j] * s
@@ -796,12 +796,12 @@ class MatchEngine:
             pint[lofted, :-1, :] = 0.0  # in the air until it lands
             lane = 1.0 - np.prod(1.0 - 0.55 * pint.max(axis=1), axis=1)
             space = np.linalg.norm(T_[:, None, :] - o_att[None, :, :], axis=2).min(axis=1)
-            ctrl = 0.35 / (1.0 + np.exp((space - 2.0))) + 0.15 * lofted
+            ctrl = 0.35 / (1.0 + np.exp(space - 2.0)) + 0.15 * lofted
             p_exec = (p["pass_base"] - p["pass_len_penalty_per_m"] * L - p["pass_pressure_penalty"] * pr
                       - 0.06 * lofted) * (0.82 + 0.3 * passing) * st.strength
             p_exec = np.clip(p_exec, 0.3, 0.99)
             p_succ = p_exec * (1 - lane) * (1 - ctrl)
-            for n, (j, tgt, kind) in enumerate(cands):
+            for n, (j, _tgt, kind) in enumerate(cands):
                 if L[n] < (3.0 if sp else 5.0) or L[n] > max_len:
                     continue
                 if sp == "kickoff" and T_[n, 0] > 1.0:
@@ -1155,7 +1155,7 @@ class MatchEngine:
             s = SIGN[tid]
             A = st.A
             opp = other(tid)
-            O = self.ts[opp].A
+            Opp = self.ts[opp].A
             bx, by = b * s
             poss = self.poss == tid
             sty = self._style(tid, t)
@@ -1167,7 +1167,7 @@ class MatchEngine:
                 X = 0.85 * ax + 0.55 * bx + 4 + 6 * sty["line"] + st.poss_dx
                 wy = np.where((st.poss_wy < 1.0) & (bx < 5), 1.0, st.poss_wy)
                 Y = ay * (0.95 + 0.35 * sty["width"]) * wy + 0.22 * by
-                o_x = np.sort(self.pos[O, 0] * s)[::-1]
+                o_x = np.sort(self.pos[Opp, 0] * s)[::-1]
                 last_line = max(float(o_x[1]), bx)
                 X = np.minimum(np.clip(X, -47, 46), last_line - 0.5)
             else:
@@ -1199,7 +1199,7 @@ class MatchEngine:
                 if self.state == OWNED and bx > -25 and self.owner >= 0:
                     rate = p["run_prob_per_s"] * st.run_rate * (0.5 + self.tr["work_rate"][A]) * self.dt
                     starts = (rng.random(11) < rate) & (self.run_until[A] <= t)
-                    o_x = np.sort(self.pos[O, 0] * s)[::-1]
+                    o_x = np.sort(self.pos[Opp, 0] * s)[::-1]
                     line = float(o_x[1])
                     for slot in np.nonzero(starts)[0]:
                         j = A[slot]
@@ -1214,21 +1214,21 @@ class MatchEngine:
                 tgt[A[running]] = self.run_tgt[A[running]]
                 urgent[A[running]] = 1.0  # runs in behind are flat out
                 if self.state == OWNED and self.owner >= 0 and not self.setpiece:
-                    for j, spot in self._support(t, tid, A, O, running).items():
+                    for j, spot in self._support(t, tid, A, Opp, running).items():
                         tgt[j] = spot
                         urgent[j] = 0.7 if float(np.linalg.norm(self.pos[j] - spot)) > 6.0 else 0.0
                         running[np.nonzero(A == j)[0]] = True  # don't push supporters off their spot
                 # Find space: drift away from the nearest marker
                 Pm = self.pos[A[1:]]
-                dd = np.linalg.norm(Pm[:, None, :] - self.pos[O][None, :, :], axis=2)
+                dd = np.linalg.norm(Pm[:, None, :] - self.pos[Opp][None, :, :], axis=2)
                 no = np.argmin(dd, axis=1)
                 dmin = dd[np.arange(10), no]
-                away = Pm - self.pos[O][no]
+                away = Pm - self.pos[Opp][no]
                 push = (np.maximum(0.0, 6.0 - dmin) * 0.8 / (dmin + 1e-6))[:, None] * away
                 near_ball = np.linalg.norm(Pm - b, axis=1) < 35
                 tgt[A[1:]] += np.where((near_ball & ~running[1:])[:, None], push, 0.0)
             elif not poss and self.state in (OWNED, FLIGHT, LOOSE) and rk is None:
-                self._defend(t, tid, A, O, tgt, urgent, sty)
+                self._defend(t, tid, A, Opp, tgt, urgent, sty)
 
         if self.state == OWNED and self.owner >= 0:
             tgt[self.owner] = self.carry_tgt
@@ -1251,20 +1251,20 @@ class MatchEngine:
             tgt[r.taker] = r.spot - np.array([SIGN[r.team] * 0.5, 0.0])
             urgent[r.taker] = 0.6 if float(np.linalg.norm(self.pos[r.taker] - r.spot)) > 8 else 0.0
             if r.kind in ("free_kick", "corner", "kickoff"):  # opponents give 9.15 m
-                O = self.ts[other(r.team)].A
-                v = tgt[O] - r.spot
+                Opp = self.ts[other(r.team)].A
+                v = tgt[Opp] - r.spot
                 dist = np.linalg.norm(v, axis=1) + 1e-6
-                tgt[O] = np.where((dist < 9.5)[:, None], r.spot + v / dist[:, None] * 9.5, tgt[O])
+                tgt[Opp] = np.where((dist < 9.5)[:, None], r.spot + v / dist[:, None] * 9.5, tgt[Opp])
         return tgt, urgent
 
-    def _support(self, t, tid, A, O, running) -> dict[int, np.ndarray]:
+    def _support(self, t, tid, A, Opp, running) -> dict[int, np.ndarray]:
         """Two teammates show for the ball: spots 9-14 m away with the most space, refreshed every second."""
         if self.owner == self.support_owner and t < self.support_t + 1.0:
             return self.support
         self.support_owner, self.support_t = self.owner, t
         s = SIGN[tid]
         b = self.ball[:2] * s
-        o_att = self.pos[O] * s
+        o_att = self.pos[Opp] * s
         cand = []
         for ang in (0.6, -0.6, 1.4, -1.4, 2.4, -2.4, 0.0):
             r = self.rng.uniform(9, 14)
@@ -1287,7 +1287,7 @@ class MatchEngine:
         self.support = out
         return out
 
-    def _defend(self, t, tid, A, O, tgt, urgent, sty) -> None:
+    def _defend(self, t, tid, A, Opp, tgt, urgent, sty) -> None:
         """Out of possession: close down the ball, cover the nearest option, mark the rest."""
         p = self.p
         s = SIGN[tid]
