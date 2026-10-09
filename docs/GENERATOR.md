@@ -119,6 +119,19 @@ The simulator's probabilities (pass success chance, true xG before outcome) are 
 - [ ] Goalkeeper behaviour: sweeping, claiming crosses, throws.
 - [ ] Remove tracking teleports (walk the taker to the ball; animate the header).
 
+### Code structure (split when needed)
+- [ ] Split `sim.py` (~1,460 lines, one `MatchSim` class) into modules **when two people need to change the simulator at once**, not before:
+
+  | Module | Holds |
+  |---|---|
+  | `match.py` | Clock, rules, restarts, cards, subs, event recording |
+  | `tactics.py` | Formation shape, pressing, marking, runs |
+  | `decisions.py` | Action choice for the player on the ball |
+  | `physics.py` | Movement, acceleration, body blocking, ball flight |
+
+  Keep the data-oriented design (one numpy array per property, all 22 players updated together). One object per player would mean ~1.2M Python method calls per match and several times slower simulation. It must be a pure refactor: confirm with seed fingerprints that matches are unchanged. Avoid calling these classes "agents", which is reserved for the AI agents that the Agentic Design criterion scores.
+- [ ] Give other modules a public recording API instead of reading `MatchSim._rec_*` directly.
+
 ### Data and tooling
 - [ ] Live replayer that publishes events at their release time to the ingest pipeline (local queue first, Azure Event Hubs later).
 - [ ] Pin GitHub Actions to commit SHAs.
