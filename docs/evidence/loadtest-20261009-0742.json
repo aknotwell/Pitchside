@@ -1,0 +1,327 @@
+{
+ "at": "2026-10-09T07:42:48Z",
+ "matches": 10,
+ "speed": 6.0,
+ "period_min": 10.0,
+ "watched": 2,
+ "peak_replicas": {
+  "interpreter": 4,
+  "storyteller": 4
+ },
+ "latency": {
+  "template (hot path)": {
+   "n": 23,
+   "p50_ms": 235,
+   "p95_ms": 386,
+   "max_ms": 407,
+   "mean_ms": 254
+  },
+  "agent (warm/cold path)": {
+   "n": 5,
+   "p50_ms": 16916,
+   "p95_ms": 55386,
+   "max_ms": 55386,
+   "mean_ms": 24171
+  },
+  "fallback": {
+   "n": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "max_ms": null,
+   "mean_ms": null
+  }
+ },
+ "samples": [
+  {
+   "t_s": 28,
+   "interpreter": 1,
+   "storyteller": 0
+  },
+  {
+   "t_s": 45,
+   "interpreter": 2,
+   "storyteller": 0
+  },
+  {
+   "t_s": 62,
+   "interpreter": 2,
+   "storyteller": 0
+  },
+  {
+   "t_s": 78,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 95,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 111,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 127,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 144,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 161,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 177,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 194,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 210,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 227,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 243,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 260,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 277,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 294,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 313,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 330,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 347,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 363,
+   "interpreter": 4,
+   "storyteller": 4
+  }
+ ],
+ "server_latency": [
+  {
+   "source": "template",
+   "n": 119,
+   "p50": 202,
+   "p95": 364,
+   "p99": 8022
+  },
+  {
+   "source": "agent",
+   "n": 162,
+   "p50": 10160,
+   "p95": 57928,
+   "p99": 82196
+  }
+ ],
+ "cues": [
+  {
+   "match": "m31757-deremav",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 407.2578125
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 255.404296875
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 179.30419921875
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "goal",
+   "source": "template",
+   "latency_ms": 194.4306640625
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 370.62060546875
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 234.86962890625
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 274.34130859375
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 140.5654296875
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 229.164794921875
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "lower_third.goal_story",
+   "source": "agent",
+   "latency_ms": 55385.963623046875
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 16915.77587890625
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 343.877197265625
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 35138.516845703125
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 242.314697265625
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 220.162353515625
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 385.964111328125
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 278.4169921875
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 147.2548828125
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 152.28076171875
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 194.16943359375
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 287.686279296875
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 212.529541015625
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 360.659912109375
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 178.261474609375
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 169.1474609375
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 374.617919921875
+  },
+  {
+   "match": "m31757-deremav",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 5736.3115234375
+  },
+  {
+   "match": "m31756-vxbz1ak",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 7676.73876953125
+  }
+ ]
+}

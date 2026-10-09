@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: matchlens
+metadata:
+  template: matchlens@0.1.0
+infra:
+  provider: bicep
+  path: infra
+services:
+  # One image, three Container Apps; MATCHLENS_SERVICE picks the entrypoint.
+  api:
+    project: .
+    language: py
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+  interpreter:
+    project: .
+    language: py
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+  storyteller:
+    project: .
+    language: py
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+  cue-publisher:
+    project: ./functions/cue_publisher
+    language: py
+    host: function
+  web:
+    project: ./web
+    language: js
+    host: staticwebapp
+    dist: dist
+hooks:
+  # The web build bakes in the API URL from the azd environment.
+  predeploy:
+    posix:
+      shell: sh
+      run: echo "VITE_API_URL=$API_URL" > web/.env.production.local
+      continueOnError: false
+  postdeploy:
+    posix:
+      shell: sh
+      run: ./scripts/postdeploy.sh
+      continueOnError: false

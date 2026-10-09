@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": { "value": "${AZURE_ENV_NAME}" },
+    "location": { "value": "${AZURE_LOCATION}" },
+    "principalId": { "value": "${AZURE_PRINCIPAL_ID}" },
+    "principalType": { "value": "${AZURE_PRINCIPAL_TYPE=User}" },
+    "cosmosLocation": { "value": "${COSMOS_LOCATION=}" },
+    "webPubSubSku": { "value": "${WEBPUBSUB_SKU=Free_F1}" },
+    "demoMode": { "value": "${DEMO_MODE=false}" },
+    "alertEmail": { "value": "${ALERT_EMAIL=}" },
+    "apiExists": { "value": "${SERVICE_API_RESOURCE_EXISTS=false}" },
+    "interpreterExists": { "value": "${SERVICE_INTERPRETER_RESOURCE_EXISTS=false}" },
+    "storytellerExists": { "value": "${SERVICE_STORYTELLER_RESOURCE_EXISTS=false}" }
+  }
+}

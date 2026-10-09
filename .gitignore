@@ -1,19 +1,14 @@
-# Python
-__pycache__/
-*.py[cod]
 .venv/
+__pycache__/
+*.pyc
 .pytest_cache/
 .ruff_cache/
-
-# Generated data (commit small samples under data/samples/ only)
-data/matches/
-
-# Node
+.azure/
+.env
 node_modules/
 dist/
-
-# Env / OS
-.env
-.DS_Store
-pytest-report.xml
-test-summary.md
+data/raw/
+*.log
+.python_packages/
+local.settings.json
+web/.env.production.local

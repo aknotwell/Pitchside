@@ -1,0 +1,472 @@
+{
+ "at": "2026-10-09T07:09:38Z",
+ "matches": 10,
+ "speed": 6.0,
+ "period_min": 10.0,
+ "watched": 4,
+ "peak_replicas": {
+  "interpreter": 4,
+  "storyteller": 6
+ },
+ "latency": {
+  "template (hot path)": {
+   "n": 46,
+   "p50_ms": 19563,
+   "p95_ms": 119649,
+   "max_ms": 135731,
+   "mean_ms": 39396
+  },
+  "agent (warm/cold path)": {
+   "n": 8,
+   "p50_ms": 79064,
+   "p95_ms": 90923,
+   "max_ms": 90923,
+   "mean_ms": 49508
+  },
+  "fallback": {
+   "n": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "max_ms": null,
+   "mean_ms": null
+  }
+ },
+ "samples": [
+  {
+   "t_s": 28,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 44,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 60,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 76,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 93,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 109,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 125,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 142,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 158,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 174,
+   "interpreter": 4,
+   "storyteller": 0
+  },
+  {
+   "t_s": 190,
+   "interpreter": 4,
+   "storyteller": 3
+  },
+  {
+   "t_s": 206,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 222,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 239,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 255,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 272,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 288,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 304,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 320,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 336,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 352,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 368,
+   "interpreter": 4,
+   "storyteller": 6
+  }
+ ],
+ "cues": [
+  {
+   "match": "m29778-8urc86j",
+   "template": "card",
+   "source": "template",
+   "latency_ms": 133086.96801757812
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "card",
+   "source": "template",
+   "latency_ms": 135731.2314453125
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 118898.86376953125
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 115786.06298828125
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 115255.25390625
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 119649.24487304688
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 97299.39819335938
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 99413.76635742188
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "card",
+   "source": "template",
+   "latency_ms": 79005.78662109375
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 72098.68701171875
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 67539.0859375
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 63048.578369140625
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 52815.926513671875
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 52689.625
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 52346.1181640625
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 46782.373291015625
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 42018.95166015625
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 36071.94287109375
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 33807.093994140625
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 28131.89697265625
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 31617.04150390625
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 26819.096923828125
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 21981.015869140625
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 19205.679931640625
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 19562.744140625
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 11172.3544921875
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 15016.45703125
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 12407.567138671875
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 10687.61474609375
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 8848.519775390625
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 4992.525634765625
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 5736.583984375
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 3558.686767578125
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 3553.520263671875
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 12746.503173828125
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 3819.7802734375
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 7189.71240234375
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 6106.135498046875
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 8502.467041015625
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 10256.817138671875
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 3385.435302734375
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 2233.10107421875
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 88859.0498046875
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 417.174560546875
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 79063.97290039062
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 89854.26196289062
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 186.966552734375
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 90922.52368164062
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 320.571533203125
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 398.642578125
+  },
+  {
+   "match": "m29781-m41iwl5",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 10787.00830078125
+  },
+  {
+   "match": "m29780-zbaj404",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 8189.59521484375
+  },
+  {
+   "match": "m29778-8urc86j",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 13974.53271484375
+  },
+  {
+   "match": "m29779-tejg0qe",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 14409.61181640625
+  }
+ ]
+}

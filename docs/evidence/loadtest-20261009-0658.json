@@ -1,0 +1,142 @@
+{
+ "at": "2026-10-09T06:58:18Z",
+ "matches": 10,
+ "speed": 6.0,
+ "period_min": 10.0,
+ "watched": 4,
+ "peak_replicas": {
+  "interpreter": 4,
+  "storyteller": 6
+ },
+ "latency": {
+  "template (hot path)": {
+   "n": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "max_ms": null,
+   "mean_ms": null
+  },
+  "agent (warm/cold path)": {
+   "n": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "max_ms": null,
+   "mean_ms": null
+  },
+  "fallback": {
+   "n": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "max_ms": null,
+   "mean_ms": null
+  }
+ },
+ "samples": [
+  {
+   "t_s": 27,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 44,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 60,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 76,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 93,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 108,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 125,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 141,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 157,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 173,
+   "interpreter": 4,
+   "storyteller": 4
+  },
+  {
+   "t_s": 204,
+   "interpreter": -1,
+   "storyteller": -1
+  },
+  {
+   "t_s": 225,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 241,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 257,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 274,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 290,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 306,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 322,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 338,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 355,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 371,
+   "interpreter": 4,
+   "storyteller": 6
+  }
+ ],
+ "cues": []
+}

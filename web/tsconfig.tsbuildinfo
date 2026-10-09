@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/api.ts","./src/live.ts","./src/main.tsx","./src/replay.ts","./src/types.ts","./src/components/Ask.tsx","./src/components/Overlay.tsx","./src/components/Pitch.tsx","./src/components/Producer.tsx","./src/components/Scoreboard.tsx","./src/components/Stats.tsx","./src/components/WhyDrawer.tsx"],"version":"5.9.3"}

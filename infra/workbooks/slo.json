@@ -1,0 +1,162 @@
+{
+ "version": "Notebook/1.0",
+ "items": [
+  {
+   "type": 1,
+   "content": {
+    "json": "# MatchLens: live SLOs\nEvent-driven pipeline health. **Hot path SLO:** p95 event \u2192 cue pushed < 1 s. **Warm path SLO:** p50 verified explanation < 10 s. **Fallback rate SLO:** < 10%."
+   }
+  },
+  {
+   "type": 3,
+   "content": {
+    "version": "KqlItem/1.0",
+    "query": "AppTraces | where Message startswith 'cue_published' | parse Message with 'cue_published match=' match ' source=' source ' template=' template ' latency_ms=' ms:long | summarize p50=percentile(ms, 50), p95=percentile(ms, 95) by source, bin(TimeGenerated, 5m)",
+    "size": 0,
+    "title": "Event \u2192 cue pushed to Web PubSub (ms), by path",
+    "timeContext": {
+     "durationMs": 21600000
+    },
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "visualization": "timechart"
+   },
+   "customWidth": "50"
+  },
+  {
+   "type": 3,
+   "content": {
+    "version": "KqlItem/1.0",
+    "query": "AppTraces | where Message startswith 'cue_published' and Message has 'source=template' | parse Message with * 'latency_ms=' ms:long | summarize p50=percentile(ms,50), p95=percentile(ms,95), p99=percentile(ms,99), cues=count()",
+    "size": 0,
+    "title": "Hot path p95 vs SLO (last 6 h)",
+    "timeContext": {
+     "durationMs": 21600000
+    },
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "visualization": "tiles",
+    "tileSettings": {
+     "showBorder": true
+    }
+   },
+   "customWidth": "50"
+  },
+  {
+   "type": 3,
+   "content": {
+    "version": "KqlItem/1.0",
+    "query": "union AppTraces, AppDependencies | where AppRoleName in ('interpreter','storyteller','api','simulator','replay') | summarize replicas=dcount(AppRoleInstance) by AppRoleName, bin(TimeGenerated, 1m)",
+    "size": 0,
+    "title": "Active replicas per service (instances emitting telemetry)",
+    "timeContext": {
+     "durationMs": 21600000
+    },
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "visualization": "timechart"
+   },
+   "customWidth": "50"
+  },
+  {
+   "type": 3,
+   "content": {
+    "version": "KqlItem/1.0",
+    "query": "AppTraces | where AppRoleName == 'storyteller' and Message has 'cues via' | extend outcome = case(Message has 'resumed', 'resumed from checkpoint', Message has 'via fallback', 'fallback', 'agent (verified)') | summarize moments=count() by outcome, bin(TimeGenerated, 15m)",
+    "size": 0,
+    "title": "Storyteller outcomes (agent / fallback / resumed)",
+    "timeContext": {
+     "durationMs": 21600000
+    },
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "visualization": "barchart"
+   },
+   "customWidth": "50"
+  },
+  {
+   "type": 3,
+   "content": {
+    "version": "KqlItem/1.0",
+    "query": "AppTraces | where AppRoleName == 'storyteller' and Message has 'cues via' | parse Message with 'moment ' moment ' (' mkind '): ' cues:int ' cues via ' source ' in ' ms:long ' ms' rest | summarize n=count(), p50=percentile(ms,50), p95=percentile(ms,95) by mkind",
+    "size": 0,
+    "title": "Workflow latency by moment kind (ms)",
+    "timeContext": {
+     "durationMs": 21600000
+    },
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "visualization": "table"
+   },
+   "customWidth": "50"
+  },
+  {
+   "type": 3,
+   "content": {
+    "version": "KqlItem/1.0",
+    "query": "union AppRequests, AppDependencies | where TimeGenerated > ago(6h) | summarize calls=count() by AppRoleName, bin(TimeGenerated, 5m)",
+    "size": 0,
+    "title": "Throughput: calls per minute by service",
+    "timeContext": {
+     "durationMs": 21600000
+    },
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "visualization": "areachart"
+   },
+   "customWidth": "50"
+  },
+  {
+   "type": 3,
+   "content": {
+    "version": "KqlItem/1.0",
+    "query": "AppTraces | where AppRoleName == 'storyteller' and Message startswith 'deployment ' | parse Message with 'deployment ' deployment ' failed: ' error | summarize failures=count() by deployment, reason=tostring(split(error, ' ')[0])",
+    "size": 0,
+    "title": "Model failures and fallbacks by deployment",
+    "timeContext": {
+     "durationMs": 21600000
+    },
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "visualization": "table"
+   },
+   "customWidth": "50"
+  },
+  {
+   "type": 3,
+   "content": {
+    "version": "KqlItem/1.0",
+    "query": "AppTraces | where Message has_any ('CHAOS', 'resuming', 'claimed partition', 'released partition', 'dropped', 'restored') | project TimeGenerated, AppRoleName, Message | order by TimeGenerated desc | take 50",
+    "size": 0,
+    "title": "Resilience events (chaos drills, resumes, partition moves, dropped ticks)",
+    "timeContext": {
+     "durationMs": 21600000
+    },
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "visualization": "table"
+   },
+   "customWidth": "50"
+  },
+  {
+   "type": 3,
+   "content": {
+    "version": "KqlItem/1.0",
+    "query": "AppTraces | where AppRoleName == 'replay' and Message startswith 'replay ' | project TimeGenerated, Message | order by TimeGenerated desc",
+    "size": 0,
+    "title": "Replays packaged (event-driven job)",
+    "timeContext": {
+     "durationMs": 21600000
+    },
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "visualization": "table"
+   },
+   "customWidth": "50"
+  }
+ ],
+ "isLocked": false,
+ "fallbackResourceIds": [
+  "{workspace}"
+ ]
+}
