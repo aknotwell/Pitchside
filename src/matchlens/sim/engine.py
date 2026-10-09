@@ -1311,7 +1311,7 @@ class MatchEngine:
                         px, py = self.pos[j] * s
                         role = self.role[j]
                         ty = py * (0.6 if role in ("inverted winger", "poacher") else 0.95) + rng.normal(0, 3)
-                        self.run_tgt[j] = self._inside(np.array([min(line + rng.uniform(5, 13), 47.0), ty]) * s, 2.0)
+                        self.run_tgt[j] = self._inside(np.array([min(line + rng.uniform(*p["run_depth_m"]), 48.0), ty]) * s, 2.0)
                         self.run_until[j] = t + rng.uniform(*p["run_s"])
                 running = self.run_until[A] > t
                 tgt[A[running]] = self.run_tgt[A[running]]
@@ -1442,7 +1442,9 @@ class MatchEngine:
             dl = np.linalg.norm(self.pos[out] - land, axis=1)
             j = out[int(np.argmin(dl))]
             tgt[j] = land + (own_goal - land) / (np.linalg.norm(own_goal - land) + 1e-6) * 1.0
-            urgent[j] = 0.85
+            # A ball played in behind the defender, with ground to make up, is a race: flat out.
+            behind = s * (land[0] - self.pos[j][0]) < -2.0 and float(np.min(dl)) > 8.0
+            urgent[j] = 1.0 if behind else 0.85
             engaged.add(j)
         # Marking: pull towards the goal side of the nearest attacker
         rest = [i for i in out if i not in engaged]
@@ -1508,7 +1510,10 @@ class MatchEngine:
         urg = urgent[A]
         vm = self._vm
         hurry = urg > 0
-        cap = np.where(hurry, np.maximum(vm * urg, self._jog), self._jog)
+        # Hard running (pressing, chasing, getting onto a pass) tops out at a working pace; only real
+        # sprints (runs in behind, recovery runs) go to the player's top speed.
+        work = np.minimum(vm * urg, p["hard_run_mps"])
+        cap = np.where(hurry, np.maximum(np.where(urg >= 0.97, vm, work), self._jog), self._jog)
         steer = p["steer_gain"]
         scale = np.minimum(steer, cap / d)
         scale = np.where(hurry & (d > p["urgent_min_gap_m"]), cap / d, scale)
