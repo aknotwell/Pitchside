@@ -88,3 +88,8 @@ FORMATIONS: dict[str, list[Slot]] = {
 }
 
 BENCH_POSITIONS = ["GK", "CB", "LB", "CM", "AM", "LW", "ST"]
+
+# The simulator relies on the goalkeeper being the first slot of every formation.
+for _name, _slots in FORMATIONS.items():
+    assert len(_slots) == 11 and _slots[0].position == "GK", f"{_name}: GK must be slot 0 of 11"
+    assert sum(s.position == "GK" for s in _slots) == 1, f"{_name}: exactly one GK"

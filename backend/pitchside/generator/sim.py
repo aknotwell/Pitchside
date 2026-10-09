@@ -155,6 +155,10 @@ class MatchSim:
                 self._lines.append(slot.line)
         self.slot_line = np.array(self._lines)
         self._idx = (np.arange(11), np.arange(11, 22))
+        # Goalkeepers always occupy slot 0 of each team (checked when formations load) and
+        # are never substituted or sent off; use this mask rather than slot arithmetic.
+        self.is_gk = np.zeros(22, dtype=bool)
+        self.is_gk[[0, 11]] = True
         self._is_def = self.slot_line == "def"
         self._is_mid = self.slot_line == "mid"
         self._is_att = self.slot_line == "att"
@@ -379,13 +383,21 @@ class MatchSim:
     # ------------------------------------------------------------------ scenario & game state
 
     def _scenario_tick(self) -> None:
-        while self._scenario_queue and self.minute() >= self._scenario_queue[0].minute:
+        while self._scenario_queue and self._is_due(self._scenario_queue[0].minute):
             ev = self._scenario_queue.pop(0)
             team = SIDES.index(ev.team)
             if ev.type == "goal":
                 self.force_goal[team] += 1
             elif ev.type == "red_card":
                 self.force_red[team] += 1
+
+    def _is_due(self, minute: float) -> bool:
+        """Has the match reached a scripted minute? Minutes after half-time belong to the
+        second half: during first-half stoppage the clock passes 45, but "minute 46" in a
+        script means the second half, not 45+1."""
+        if minute > self.half_length and self.period == 1:
+            return False
+        return self.minute() >= minute
 
     def _update_game_state(self) -> None:
         minute = self.minute()
@@ -536,7 +548,7 @@ class MatchSim:
         dteam = 1 - self.poss_team
         if self.to_att(dteam, self.focus)[0] > MARKING_ZONE + 15:
             return
-        attackers = [int(k) for k in self.team_slots(self.poss_team) if k % 11 != 0]
+        attackers = [int(k) for k in self.team_slots(self.poss_team) if not self.is_gk[k]]
         if not attackers:
             return
         apos = self.to_att(dteam, self.pos[attackers])
@@ -548,7 +560,7 @@ class MatchSim:
             ),
             key=lambda a: float(self.to_att(dteam, self.pos[a])[0]),
         )
-        free = [int(k) for k in self.team_slots(dteam) if k % 11 != 0]
+        free = [int(k) for k in self.team_slots(dteam) if not self.is_gk[k]]
         own_goal = self.to_abs(dteam, np.array([0.0, 34.0]))
         for a in threats:
             if not free:
@@ -578,7 +590,7 @@ class MatchSim:
     ) -> int | None:
         idx = self.team_slots(team)
         if outfield:
-            idx = idx[idx % 11 != 0]
+            idx = idx[~self.is_gk[idx]]
         if exclude is not None:
             idx = idx[idx != exclude]
         if len(idx) == 0:
@@ -587,7 +599,7 @@ class MatchSim:
 
     def _nearest_n(self, team: int, xy: np.ndarray, n: int) -> list[int]:
         idx = self.team_slots(team)
-        idx = idx[idx % 11 != 0]
+        idx = idx[~self.is_gk[idx]]
         order = np.argsort(np.linalg.norm(self.pos[idx] - xy, axis=1))
         return [int(i) for i in idx[order[:n]]]
 
@@ -686,7 +698,7 @@ class MatchSim:
         if self.rng.random() < RUN_RATE:
             self._maybe_start_run(team)
 
-        if dmin < 1.3 and self.t >= self.stun_until[j] and j % 11 != 0:
+        if dmin < 1.3 and self.t >= self.stun_until[j] and not self.is_gk[j]:
             rate = TACKLE_RATE * self.r["defending"][j] / 70
             if self._in_box(team, self.pos[c]):  # last-ditch defending in the box
                 rate *= BOX_TACKLE_BOOST
@@ -718,8 +730,7 @@ class MatchSim:
         foul_p = FOUL_SHARE * (1.15 - self.r["decisions"][j] / 200)
         if self.slot_pid[j] in self.yellow:
             foul_p *= 0.25  # booked players are careful
-        c_att = self.to_att(self.team_of(c), self.pos[c])
-        if c_att[0] > 88.5 and abs(c_att[1] - 34) < 20.16:
+        if self._in_box(self.team_of(c), self.pos[c]):
             foul_p *= BOX_FOUL_FACTOR  # defenders are careful inside their own box
         if self.force_red[team_j] or self.rng.random() < foul_p:
             self._foul(j, c)
@@ -763,8 +774,7 @@ class MatchSim:
                 else:
                     self.yellow.add(pid)
                     self._card(j, "yellow")
-        att = self.to_att(team_c, at)
-        if att[0] > 88.5 and abs(att[1] - 34) < 20.16:
+        if self._in_box(team_c, at):
             spot = self.to_abs(team_c, np.array([94.0, 34.0]))
             self._set_dead("penalty", team_c, spot, delay=self._dead_time("penalty"))
         else:
@@ -809,7 +819,7 @@ class MatchSim:
             zone = 0.0
             if tatt[0] > 70 and here_att[0] <= 70:
                 zone += FINAL_THIRD_PENALTY
-            if tatt[0] > 88.5 and abs(tatt[1] - 34) < 20.16:
+            if m.in_penalty_area(tatt[0], tatt[1]):
                 zone += BOX_PENALTY
                 if abs(here_att[1] - 34) > 18 and here_att[0] > 70:
                     zone += CROSS_PENALTY
@@ -818,7 +828,7 @@ class MatchSim:
             loss = m.xt(L - tatt[0], W - tatt[1]) + 0.005
             u = p * gain - (1 - p) * loss * LOSS_WEIGHT
             u += ts.directness * 0.004 * max(0.0, tatt[0] - here_att[0]) / 10
-            if r % 11 == 0:
+            if self.is_gk[r]:
                 u -= 0.006
             offside = (
                 tatt[0] > line + 0.3
@@ -849,7 +859,9 @@ class MatchSim:
         dmin, j = float(dists[jn]), int(opp[jn])
         pressure = math.exp(-dmin / 2.0)
 
-        opts = self._pass_options(c)
+        # Players don't knowingly pass to an offside teammate; offsides still happen through
+        # mistimed runs (OFFSIDE_RISK in _launch_pass).
+        opts = [o for o in self._pass_options(c) if not o[2]["offside"]]
         dist_goal = math.hypot(L - att[0], 34 - att[1])
         max_range = 36.0 if self.force_goal[team] else 30.0
         opp_att = self.to_att(team, self.pos[opp])
@@ -861,14 +873,14 @@ class MatchSim:
         blockers = int(ahead_mask.sum())
         # Not every touch is a shooting chance (body shape, balance, angle).
         opening = self.force_goal[team] or self.rng.random() < SHOT_OPENING * (1 - 0.5 * pressure)
-        if opening and dist_goal < max_range and att[0] > 70 and c % 11 != 0:
-            outfield = opp[opp % 11 != 0]
+        if opening and dist_goal < max_range and att[0] > 70 and not self.is_gk[c]:
+            outfield = opp[~self.is_gk[opp]]
             n_block = m.cone_blockers(att[0], att[1], self.to_att(team, self.pos[outfield]))
             x = m.xg(att[0], att[1], pressure) * BLOCKER_XG_FACTOR**n_block
             if x >= MIN_SHOT_XG or self.force_goal[team]:
                 bias = SHOT_BIAS + (0.15 if self.force_goal[team] else 0.0)
                 opts.append((x + bias, "shot", dict(xg=x, pressure=pressure, blockers=n_block)))
-        if dmin < 2.5 and att[0] > 35 and c % 11 != 0:
+        if dmin < 2.5 and att[0] > 35 and not self.is_gk[c]:
             p = float(
                 np.clip(0.35 + (self.r["dribbling"][c] - self.r["defending"][j]) / 120, 0.15, 0.7)
             )
@@ -988,7 +1000,7 @@ class MatchSim:
             self.flight = Flight(start, target.copy(), self.t, duration, height, arrive, home_to=r)
         else:
             opp = self.team_slots(1 - team)
-            opp = opp[opp % 11 != 0] if len(opp) > 1 else opp
+            opp = opp[~self.is_gk[opp]] if len(opp) > 1 else opp
             lane_d, lane_t = m.segment_distances(start, target, self.pos[opp])
             mask = (lane_t > 0.1) & (lane_t < 0.95)
             if mask.any() and float(lane_d[mask].min()) < INTERCEPT_LANE and not lofted:
@@ -1244,7 +1256,7 @@ class MatchSim:
     def _in_box(self, team: int, xy: np.ndarray) -> bool:
         """Is xy inside the penalty area `team` is attacking?"""
         a = self.to_att(team, xy)
-        return bool(a[0] > 88.5 and abs(a[1] - 34) < 20.16)
+        return bool(m.in_penalty_area(a[0], a[1]))
 
     def _out_of_bounds(self) -> bool:
         x, y = self.ball[:2]
@@ -1307,7 +1319,7 @@ class MatchSim:
             rs.taker = rs.team * 11
         elif rs.kind == "penalty":
             idx = self.team_slots(rs.team)
-            idx = idx[idx % 11 != 0]
+            idx = idx[~self.is_gk[idx]]
             rs.taker = int(idx[np.argmax(self.r["finishing"][idx])])
         else:
             rs.taker = self._nearest(rs.team, rs.at, outfield=True)
@@ -1429,7 +1441,7 @@ class MatchSim:
                 and made_now < 2
                 and self.bench[team]
             ):
-                idx = [k for k in self.team_slots(team) if k % 11 != 0]
+                idx = [k for k in self.team_slots(team) if not self.is_gk[k]]
                 if not idx:
                     break
                 tired = np.array(

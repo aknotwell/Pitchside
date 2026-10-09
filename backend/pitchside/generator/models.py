@@ -15,7 +15,14 @@ L, W = 105.0, 68.0
 GOAL_Y = 34.0
 GOAL_HALF_WIDTH = 3.66
 GOAL_HEIGHT = 2.44
+PENALTY_AREA_DEPTH = 16.5
+PENALTY_AREA_HALF_WIDTH = 20.16
 XT_SCALE = 0.45
+
+
+def in_penalty_area(x: float, y: float) -> bool:
+    """Is (x, y) inside the penalty area being attacked (attacking frame)?"""
+    return x > L - PENALTY_AREA_DEPTH and abs(y - GOAL_Y) < PENALTY_AREA_HALF_WIDTH
 
 
 def sigmoid(z: float) -> float:

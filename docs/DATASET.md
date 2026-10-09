@@ -98,15 +98,15 @@ Built-in: `open`, `late-comeback`, `red-card-chaos`, `early-goal` (`scenarios.py
 
 | Metric (per match) | Sim | Reference |
 |---|---|---|
-| Goals | 2.85 | 2.8 |
-| Shots / on target | 23.9 / 8.8 | 25.5 / 8.5 |
-| xG | 3.19 | 3.0 |
+| Goals | 2.80 | 2.8 |
+| Shots / on target | 24.4 / 9.0 | 25.5 / 8.5 |
+| xG | 3.21 | 3.0 |
 | Passes / accuracy | 870 / 80% | 900 / 83% |
-| Corners | 9.1 | 10.2 |
-| Fouls / yellow / red | 17.1 / 3.9 / 0.2 | 21 / 3.9 / 0.1 |
-| Offsides | 3.3 | 3.4 |
-| Tackles won / interceptions | 37.7 / 21.9 | 33 / 17 |
-| Ball in play | 56.2 min | 56 min |
+| Corners | 9.4 | 10.2 |
+| Fouls / yellow / red | 17.0 / 3.9 / 0.2 | 21 / 3.9 / 0.1 |
+| Offsides | 3.2 | 3.4 |
+| Tackles won / interceptions | 38.0 / 21.7 | 33 / 17 |
+| Ball in play | 56.3 min | 56 min |
 | Distance per outfield player per 90 / per team | 9.9 km / 108 km | 10.8 km / 112 km |
 
 All 16 metrics are within tolerance.
