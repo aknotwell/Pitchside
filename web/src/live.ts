@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { sampleFrames } from "./sample";
 import type { Cue, Frame, Lang, MatchState, Persona } from "./types";
 
 /** Broadcast delay in wall-clock seconds: the player shows the match this far behind live, so
@@ -17,20 +18,8 @@ export interface Live {
   cues: Cue[];
   history: Cue[];
   speed: number;
-}
-
-function lerpFrame(a: Frame, b: Frame, t: number): Frame {
-  const span = b.t_s - a.t_s;
-  const k = span > 0 ? Math.min(1, Math.max(0, (t - a.t_s) / span)) : 0;
-  const pb = new Map(b.players.map((p) => [p.id, p]));
-  return {
-    t_s: t,
-    ball: [a.ball[0] + (b.ball[0] - a.ball[0]) * k, a.ball[1] + (b.ball[1] - a.ball[1]) * k, a.ball[2] + (b.ball[2] - a.ball[2]) * k],
-    players: a.players.map((p) => {
-      const q = pb.get(p.id);
-      return q ? { id: p.id, x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k } : p;
-    }),
-  };
+  /** Frame at this exact instant (for 60 fps renderers); null until the feed starts. */
+  sample: () => Frame | null;
 }
 
 export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lang): Live {
@@ -39,7 +28,9 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
   const allCues = useRef<Map<string, Cue>>(new Map());
   const shownAt = useRef<Map<string, number>>(new Map());
   const clock = useRef<Clock | null>(null);
-  const [live, setLive] = useState<Live>({ connected: false, playhead: 0, liveEdge: 0, frame: null, state: null, cues: [], history: [], speed: 1 });
+  const sampler = useRef<() => Frame | null>(() => null);
+  const sample = useRef(() => sampler.current()).current;
+  const [live, setLive] = useState<Live>({ connected: false, playhead: 0, liveEdge: 0, frame: null, state: null, cues: [], history: [], speed: 1, sample });
 
   useEffect(() => {
     if (!matchId) return;
@@ -98,6 +89,17 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
       }
     })();
 
+    const playheadAt = (now: number) => {
+      const c = clock.current, fs = frames.current;
+      if (!c || !fs.length) return null;
+      const liveEdge = c.matchT + (now - c.wall) * c.speed;
+      return { liveEdge, playhead: Math.max(fs[0].t_s, liveEdge - BROADCAST_DELAY_S * c.speed) };
+    };
+    sampler.current = () => {
+      const ph = playheadAt(performance.now() / 1000);
+      return ph ? sampleFrames(frames.current, ph.playhead) : null;
+    };
+
     let raf = 0;
     let lastPaint = 0;
     const tick = () => {
@@ -111,12 +113,10 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
       let frame: Frame | null = null;
       let playhead = 0;
       let liveEdge = 0;
-      if (c && fs.length) {
-        liveEdge = c.matchT + (now - c.wall) * c.speed;
-        playhead = Math.max(fs[0].t_s, liveEdge - BROADCAST_DELAY_S * c.speed);
-        let i = fs.findIndex((f) => f.t_s > playhead);
-        if (i === -1) i = fs.length - 1;
-        frame = i > 0 ? lerpFrame(fs[i - 1], fs[i], playhead) : fs[0];
+      const ph = playheadAt(now);
+      if (ph) {
+        ({ liveEdge, playhead } = ph);
+        frame = sampleFrames(fs, playhead);
       }
       // State: latest doc at or before the playhead (or the newest if we have no frames yet)
       const sts = states.current;
@@ -147,6 +147,7 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
     return () => {
       stopped = true;
       cancelAnimationFrame(raf);
+      sampler.current = () => null;
       ws?.close();
     };
   }, [matchId, persona, lang]);

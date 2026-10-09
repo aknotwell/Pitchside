@@ -108,6 +108,13 @@ def test_ball_carrier_is_engaged_in_open_play(logged):
     assert (near > 12).mean() < 0.1
 
 
+def test_top_speeds_are_human(short_match):
+    """Half-time resets and substitutions move players instantly; that must not count as running."""
+    it, _, _ = run_interpreter(short_match.stream())
+    assert it.state_doc()["topSpeeds"]
+    assert all(s["kmh"] < 40 for s in it.state_doc()["topSpeeds"])
+
+
 def test_interpreter_replay_is_identical(short_match):
     msgs = list(short_match.stream())
     it1, cues1, moments1 = run_interpreter(msgs)

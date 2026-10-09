@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { API } from "./api";
 import type { Live } from "./live";
+import { sampleFrames } from "./sample";
 import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona, TeamSummary } from "./types";
 
 interface ReplayPackage {
@@ -24,7 +25,10 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
   const shownAt = useRef<Map<string, number>>(new Map());
   const finalRef = useRef<MatchState | null>(finalState);
   finalRef.current = finalState;  // read inside the loop; changing it must not restart playback
-  const [live, setLive] = useState<Live>({ connected: false, playhead: 0, liveEdge: 0, frame: null, state: null, cues: [], history: [], speed });
+  const frames = useRef<Frame[]>([]);
+  const sampler = useRef<() => Frame | null>(() => null);
+  const sample = useRef(() => sampler.current()).current;
+  const [live, setLive] = useState<Live>({ connected: false, playhead: 0, liveEdge: 0, frame: null, state: null, cues: [], history: [], speed, sample });
 
   useEffect(() => {
     if (!matchId) return;
@@ -34,9 +38,25 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
     fetch(`${API}/api/replays/${matchId}`).then((r) => r.json()).then((p: ReplayPackage) => {
       if (stopped) return;
       pkg.current = p;
+      frames.current = p.frames.map(([t, bx, by, pl]) => ({
+        t_s: t, ball: [bx, by, 0] as [number, number, number],
+        players: p.playerIds.flatMap((id, j) => (pl[j] ? [{ id, x: pl[j]![0], y: pl[j]![1] }] : [])),
+      }));
       start.current = { wall: performance.now() / 1000, t0: p.frames[0]?.[0] ?? 0 };
       setLive((l) => ({ ...l, connected: true }));
     }).catch((e) => console.warn("replay load failed", e));
+    const playheadAt = (now: number) => {
+      const p = pkg.current;
+      if (!p || !p.frames.length) return null;
+      const end = p.frames[p.frames.length - 1][0];
+      let playhead = start.current.t0 + (now - start.current.wall) * speed;
+      if (playhead > end + 20) { start.current = { wall: now, t0: p.frames[0][0] }; shownAt.current = new Map(); playhead = p.frames[0][0]; }
+      return playhead;
+    };
+    sampler.current = () => {
+      const ph = playheadAt(performance.now() / 1000);
+      return ph === null ? null : sampleFrames(frames.current, ph);
+    };
     let raf = 0;
     let last = 0;
     const tick = () => {
@@ -47,20 +67,8 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       const p = pkg.current;
       if (!p || !p.frames.length) return;
       const now = nowMs / 1000;
-      const end = p.frames[p.frames.length - 1][0];
-      let playhead = start.current.t0 + (now - start.current.wall) * speed;
-      if (playhead > end + 20) { start.current = { wall: now, t0: p.frames[0][0] }; shownAt.current = new Map(); playhead = p.frames[0][0]; }
-      // frame interpolation
-      let i = p.frames.findIndex((f) => f[0] > playhead);
-      if (i <= 0) i = Math.max(1, i === -1 ? p.frames.length - 1 : 1);
-      const a = p.frames[i - 1], b = p.frames[i];
-      const k = b[0] > a[0] ? Math.min(1, Math.max(0, (playhead - a[0]) / (b[0] - a[0]))) : 0;
-      const players = p.playerIds.flatMap((id, j) => {
-        const pa = a[3][j], pb = b[3][j] ?? pa;
-        if (!pa || !pb) return [];
-        return [{ id, x: pa[0] + (pb[0] - pa[0]) * k, y: pa[1] + (pb[1] - pa[1]) * k }];
-      });
-      const frame: Frame = { t_s: playhead, ball: [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, 0], players };
+      const playhead = playheadAt(now)!;
+      const frame = sampleFrames(frames.current, playhead)!;
       // scoreboard from events
       let h = 0, aw = 0, clock = "00:00", period = 1;
       for (const e of p.events) {
@@ -85,10 +93,10 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       }
       history.sort((x, y) => y.display_at_s - x.display_at_s);
       active.sort((x, y) => x.priority - y.priority);
-      setLive({ connected: true, playhead, liveEdge: playhead, frame, state, cues: active, history: history.slice(0, 40), speed });
+      setLive({ connected: true, playhead, liveEdge: playhead, frame, state, cues: active, history: history.slice(0, 40), speed, sample });
     };
     raf = requestAnimationFrame(tick);
-    return () => { stopped = true; cancelAnimationFrame(raf); };
+    return () => { stopped = true; cancelAnimationFrame(raf); sampler.current = () => null; };
   }, [matchId, persona, lang, speed]);
 
   return live;

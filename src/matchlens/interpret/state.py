@@ -26,6 +26,7 @@ FINAL_THIRD_X = 17.5  # team-attacking frame
 BOX_X, BOX_Y = 36.0, 20.16
 PPDA_ZONE_X = -10.5  # defender-frame x above which defensive actions count (opponent's own 60%)
 SPRINT_MPS = 7.0
+MAX_HUMAN_MPS = 11.0  # ~40 km/h
 TOP_SPEED_TAG_MPS = 8.3  # 30 km/h, the usual broadcast 'top speed' tag
 MOMENTUM_HALF_LIFE_S = 180.0
 WINDOW_S = 600.0
@@ -520,7 +521,7 @@ class MatchInterpreter:
                     dt = fr.t_s - t0
                     if dt >= 0.5:  # 0.5 s differences smooth out positional noise
                         d = math.hypot(pp.x - x0, pp.y - y0)
-                        if d < 15:  # ignore teleports (substitutions, restarts)
+                        if d / dt <= MAX_HUMAN_MPS:  # faster than any human: a reset or substitution, not running
                             ph.distance_m += d
                             ph.speed = 0.4 * ph.speed + 0.6 * (d / dt)
                             ph.top_speed = max(ph.top_speed, ph.speed)

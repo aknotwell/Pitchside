@@ -83,3 +83,10 @@ footer { padding: 10px 16px; color: var(--muted); font-size: 12px; border-top: 1
 .squad li.on { background: #1b2633; } .squad li.bench { opacity: .55; }
 .squad .no { width: 22px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .squad .who { display: flex; flex-direction: column; } .squad .traits { font-size: 11px; color: var(--accent); }
+.pitch3d { width: 100%; aspect-ratio: 3 / 2; display: block; }
+.pitch3d canvas { width: 100% !important; height: 100% !important; display: block; cursor: grab; }
+.viewbar { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; z-index: 3; }
+.viewbar select, .viewbar button { background: rgba(8,12,18,.85); font-size: 13px; }
+.viewbar .seg button.on { background: var(--accent); }
+.stage.three { aspect-ratio: 3 / 2; }
+.stage.three .pitch3d { position: absolute; inset: 0; aspect-ratio: auto; height: 100%; }

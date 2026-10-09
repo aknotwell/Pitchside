@@ -20,3 +20,9 @@ aggregate statistics: `src/matchlens/sim/fitted_params.json` and
 All clubs, players, kits and the "Northern Shield League" are fictional. No
 league, club or broadcaster marks are used. MatchLens is not affiliated with
 any league or club.
+
+## Third-party software in the web app
+
+- **three.js** (<https://threejs.org>), MIT licence, © three.js authors. Used for the 3D
+  pitch view. The players, stadium and crowd are generated procedurally in our own code;
+  no third-party models, textures or animation clips are bundled.

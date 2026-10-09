@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
 import { Overlay } from "./components/Overlay";
 import { Pitch } from "./components/Pitch";
@@ -10,19 +10,52 @@ import { Stats } from "./components/Stats";
 import { WhyDrawer } from "./components/WhyDrawer";
 import { BROADCAST_DELAY_S, useLiveMatch } from "./live";
 import { useReplay } from "./replay";
+import { LAB_META, labSample } from "./lab";
 import type { Cue, Lang, MatchState, MatchSummary, Persona } from "./types";
+import type { CamMode } from "./components/Pitch3D";
+
+const Pitch3D = lazy(() => import("./components/Pitch3D"));
+
+function webglAvailable(): boolean {
+  try {
+    const c = document.createElement("canvas");
+    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+const HAS_GL = webglAvailable();
+const CAMS: { id: CamMode; label: string }[] = [
+  { id: "broadcast", label: "Broadcast" }, { id: "tactical", label: "Tactical" },
+  { id: "follow", label: "Follow player" }, { id: "free", label: "Free (drag)" },
+];
 
 const LANGS: { id: Lang; label: string }[] = [{ id: "en", label: "EN" }, { id: "es", label: "ES" }, { id: "ja", label: "日本語" }];
 
 export default function App() {
   const params = new URLSearchParams(location.search);
+  if (params.get("lab")) return <AthleteLab cam={(params.get("cam") as CamMode) || "free"} follow={params.get("follow")} />;
+  return <Main params={params} />;
+}
+
+function AthleteLab({ cam, follow }: { cam: CamMode; follow: string | null }) {
+  return (
+    <div className="app"><main style={{ gridTemplateColumns: "1fr" }}><section className="stage">
+      <Suspense fallback={null}><Pitch3D sample={labSample} meta={LAB_META} follow={follow} camMode={cam} /></Suspense>
+    </section></main></div>
+  );
+}
+
+function Main({ params }: { params: URLSearchParams }) {
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [matchId, setMatchId] = useState<string | null>(params.get("match"));
   const [persona, setPersona] = useState<Persona>((params.get("persona") as Persona) || "casual");
   const [lang, setLang] = useState<Lang>((params.get("lang") as Lang) || "en");
   const [why, setWhy] = useState<Cue | null>(null);
   const [tab, setTab] = useState<"stats" | "squads" | "feed" | "ask" | "producer">("stats");
-  const [follow, setFollow] = useState<string | null>(null);
+  const [follow, setFollow] = useState<string | null>(params.get("follow"));
+  const [view, setView] = useState<"2d" | "3d">(params.get("view") === "2d" || !HAS_GL ? "2d" : "3d");
+  const [cam, setCam] = useState<CamMode>((params.get("cam") as CamMode) || "broadcast");
   const [replays, setReplays] = useState<Awaited<ReturnType<typeof api.replays>>["replays"]>([]);
   const [replayId, setReplayId] = useState<string | null>(params.get("replay"));
   const [replaySpeed, setReplaySpeed] = useState(4);
@@ -51,9 +84,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const q = new URLSearchParams({ ...(replayId ? { replay: replayId } : matchId ? { match: matchId } : {}), persona, lang });
+    const q = new URLSearchParams({ ...(replayId ? { replay: replayId } : matchId ? { match: matchId } : {}), persona, lang, view, ...(view === "3d" ? { cam } : {}), ...(follow ? { follow } : {}) });
     history.replaceState(null, "", `?${q}`);
-  }, [matchId, replayId, persona, lang]);
+  }, [matchId, replayId, persona, lang, view, cam, follow]);
 
   return (
     <div className="app">
@@ -88,9 +121,26 @@ export default function App() {
         </div>
       </header>
       <main>
-        <section className="stage">
+        <section className={view === "3d" ? "stage three" : "stage"}>
           <Scoreboard state={live.state} delay={replayId ? 0 : BROADCAST_DELAY_S} connected={live.connected} replay={!!replayId} />
-          <Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} follow={follow} />
+          {view === "3d" ? (
+            <Suspense fallback={<Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} follow={follow} />}>
+              <Pitch3D sample={live.sample} meta={live.state?.meta} follow={follow} camMode={cam} />
+            </Suspense>
+          ) : (
+            <Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} follow={follow} />
+          )}
+          <div className="viewbar">
+            <div className="seg" role="group" aria-label="Pitch view">
+              <button className={view === "2d" ? "on" : ""} onClick={() => setView("2d")}>2D</button>
+              <button className={view === "3d" ? "on" : ""} onClick={() => setView("3d")} disabled={!HAS_GL}>3D</button>
+            </div>
+            {view === "3d" && (
+              <select aria-label="Camera" value={cam} onChange={(e) => setCam(e.target.value as CamMode)}>
+                {CAMS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            )}
+          </div>
           <Overlay cues={live.cues} onWhy={setWhy} />
         </section>
         <aside className="side">
