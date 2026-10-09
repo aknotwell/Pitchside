@@ -18,6 +18,18 @@ function team(meta: MatchMeta, side: "home" | "away", goals: number): TeamSummar
   return { id: t.id, name: t.name, goals, shots: 0, shotsOnTarget: 0, xg: 0, passes: 0, passAccuracy: 0, finalThirdEntries: 0, ppda: null, pressures: 0, turnovers: 0 };
 }
 
+/** Broadcast clock at match time `t`: the simulator's rule (`display_clock` in sim/engine.py), so the
+ *  replay clock runs every second instead of jumping from one event's clock to the next. */
+function displayClock(t: number, period: number, periodStart: number, periodMin: number): string {
+  const regulation = periodMin * 60;
+  const base = period === 1 ? 0 : regulation;
+  const elapsed = Math.max(0, t - periodStart);
+  const mmss = (m: number, s: number) => `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  if (elapsed <= regulation) { const total = base + elapsed; return mmss(Math.floor(total / 60), Math.floor(total % 60)); }
+  const extra = elapsed - regulation;
+  return `${Math.floor((base + regulation) / 60)}+${Math.floor(extra / 60) + 1}:${String(Math.floor(extra % 60)).padStart(2, "0")}`;
+}
+
 /** Plays a packaged replay with the same rendering contract as the live hook. */
 export function useReplay(matchId: string | null, persona: Persona, lang: Lang, speed: number, finalState: MatchState | null, paused: boolean): Live {
   const pkg = useRef<ReplayPackage | null>(null);
@@ -93,13 +105,16 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       const now = vt(nowMs / 1000);  // cue lifetimes stand still while paused
       const frame = sampleFrames(frames.current, playhead)!;
       // scoreboard from events
-      let h = 0, aw = 0, clock = "00:00", period = 1;
+      let h = 0, aw = 0, period = 1, periodStart = 0, periodEnd: number | null = null;
       for (const e of p.events) {
         if (e.clock_s > playhead) break;
         if (e.type === "shot" && e.outcome === "goal") { if (e.team_id === "h") h++; else aw++; }
-        if (e.display_clock) clock = e.display_clock;
-        period = e.period;
+        // Period comes from the whistles only: an event resolving on the half-time whistle can carry the next period
+        if (e.type === "period_start") { period = e.period; periodStart = e.clock_s; periodEnd = null; }
+        if (e.type === "period_end") periodEnd = e.clock_s;
       }
+      // The clock stops at the whistle and holds until the next period starts
+      const clock = displayClock(Math.min(playhead, periodEnd ?? playhead), period, periodStart, p.meta.period_min ?? 45);
       const fs = finalRef.current;
       const base = fs && fs.id === p.matchId ? fs : null;
       const state: MatchState = base
