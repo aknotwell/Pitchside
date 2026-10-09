@@ -543,3 +543,29 @@ and supporting players standing too far away.
 | Clearances per match | 46 | 40 |
 | Headers, share of shots | 12% | 17% |
 | Shots from outside the box | 42% | 38% |
+
+## Checkpoint 12: like-for-like passing, final realism pass (2026-10-09)
+
+- **Like-for-like pass definition.** SkillCorner counts *player possessions ending in a
+  pass*. Restart deliveries (throw-ins, goal kicks, corners, free kicks, kick-offs) are not
+  player possessions there, so the comparison now leaves them out too, about 100 per match.
+  All passes still appear in the event stream and the stats.
+- **Longer, rarer runs in behind.** The new `run_s` setting controls run length.
+- **Retuning:** a stronger long-pass cost, slightly faster top speeds and a rebalanced shot mix.
+
+On 64 held-out matches (`docs/REALISM.md`):
+
+| Measure | Now | Real or typical |
+|---|---|---|
+| Passes per match | 810 (+1%) | 804 |
+| Pass completion | 82.3% | 83.4% |
+| Mean pass length | 16.8 m (+3%) | 16.3 m |
+| Shots per match | 24.4 (−7%) | 26.3 |
+| Distance per 90 | 10.23 km | 10.30 km |
+| Sprints per 90 | 8.7 | 8.5 |
+| Peak speed | 26.2 km/h (−8%) | 28.3 km/h |
+| Goals per match | 2.9 | 2.8 |
+| Fouls per match | 24 | 23 |
+| Yellow cards per match | 3.6 | 3.8 |
+| Headers, share of shots | 12% | 17% |
+| Shots from outside the box | 36% | 38% |
