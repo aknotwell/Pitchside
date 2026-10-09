@@ -1,0 +1,10 @@
+.venv
+.git
+.azure
+web
+functions
+docs
+tests
+infra
+**/__pycache__
+**/node_modules

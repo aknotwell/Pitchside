@@ -66,7 +66,8 @@ Hard rules (a code verifier rejects violations):
 - List the evidence keys each variant relies on in evidence_keys.
 - Produce exactly one variant for every requested persona/lang pair.
 - analyst: precise, tactical, cites 2-3 metrics. casual: warm, plain words, at most 1 number.
-- Write natively in the requested language (en, es, ja). Club and player names stay as given.
+- Write natively in the requested language (en, es, ja). Club and player names stay EXACTLY as given,
+  in Latin script, even in Japanese (never transliterate them).
 - title <= 70 characters; text <= 260 characters, one or two sentences.
 """
 
@@ -319,10 +320,10 @@ class FoundryExplainer:
         last: Exception | None = None
         for dep, agent in zip(self.deployments, self.agents, strict=True):
             try:
-                resp = await asyncio.wait_for(
-                    agent.run(prompt, options={"response_format": Explanation, "max_tokens": self.max_output_tokens}),
-                    timeout=self.timeout_s,
-                )
+                options = {"response_format": Explanation, "max_tokens": self.max_output_tokens}
+                if dep.startswith(("gpt-5", "gpt-6", "o")):
+                    options["reasoning"] = {"effort": "minimal" if dep.startswith("gpt-5") else "low"}
+                resp = await asyncio.wait_for(agent.run(prompt, options=options), timeout=self.timeout_s)
                 value = resp.value
                 if value is None:
                     raise ValueError("model returned no structured output")

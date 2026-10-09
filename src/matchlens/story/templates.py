@@ -32,6 +32,14 @@ def _text(m: Moment, persona: str, lang: str) -> str:
     k = m.kind
     if k in ("goal", "big_chance"):
         xg, passes, dur = _ev(m, "xg"), _ev(m, "chain_passes"), _ev(m, "chain_duration_s")
+        if _ev(m, "started_from", "") == "turnover" and int(passes) <= 1:
+            pct = round(float(xg) * 100)
+            if lang == "es":
+                return f"Robo y disparo en {dur} s: xG {xg}." if persona == "analyst" else f"{team} recuperó el balón y disparó al instante. Probabilidad de gol: {pct} %."
+            if lang == "ja":
+                return f"ボール奪取から{dur}秒でシュート。xG {xg}。" if persona == "analyst" else f"{team}がボールを奪って即シュート。得点確率{pct}%。"
+            return (f"Ball won and shot within {dur} s: {xg} xG from a turnover." if persona == "analyst"
+                    else f"{team} won it back and went straight for goal. Chance of scoring: {pct}%.")
         if lang == "es":
             return (f"Disparo con xG {xg}: una jugada de {passes} pases en {dur} s." if persona == "analyst"
                     else f"{team} lo construyó con {passes} pases. Probabilidad de gol: {round(float(xg) * 100)} %.")
@@ -65,8 +73,8 @@ def _text(m: Moment, persona: str, lang: str) -> str:
 
 
 KEYS = {
-    "goal": ["xg", "chain_passes", "chain_duration_s"],
-    "big_chance": ["xg", "chain_passes", "chain_duration_s"],
+    "goal": ["xg", "chain_passes", "chain_duration_s", "started_from"],
+    "big_chance": ["xg", "chain_passes", "chain_duration_s", "started_from"],
     "momentum_swing": ["threat_10m", "opp_threat_10m"],
     "pressing_surge": ["ppda_8m", "ppda_match"],
     "half_time": ["score", "xg_home", "xg_away"],
@@ -75,10 +83,12 @@ KEYS = {
 
 
 def fallback_explanation(m: Moment, required: list[tuple[str, str]]) -> Explanation:
+    have = {e.key for e in m.evidence}
+    keys = [k for k in KEYS[m.kind] if k in have] or [e.key for e in m.evidence[:2]]
     return Explanation(
         variants=[
             Variant(persona=p, lang=lang, title=TITLES[m.kind].get(lang, TITLES[m.kind]["en"]),
-                    text=_text(m, p, lang), evidence_keys=KEYS[m.kind])
+                    text=_text(m, p, lang), evidence_keys=keys)
             for p, lang in required
         ]
     )

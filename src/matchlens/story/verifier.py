@@ -47,6 +47,7 @@ def allowed_numbers(moment: Moment) -> list[float]:
         for v in vals:
             if isinstance(v, (int, float)):
                 nums.append(float(v))
+                nums.append(abs(float(v)))
                 if 0 < abs(float(v)) <= 1:
                     nums.append(round(float(v) * 100, 1))  # 0.83 -> 83 (%)
             elif isinstance(v, str):
@@ -73,6 +74,7 @@ def verify(expl: Explanation, moment: Moment, required: list[tuple[str, str]], r
     evidence_keys = {e.key for e in moment.evidence}
     allowed_names = set(moment.names.values())
     forbidden_names = {n for n in roster_names if n not in allowed_names}
+    allowed_tokens = {tok for n in allowed_names for tok in n.split()}
     have = {(v.persona, v.lang) for v in expl.variants}
     for persona, lang in required:
         if (persona, lang) not in have:
@@ -95,7 +97,8 @@ def verify(expl: Explanation, moment: Moment, required: list[tuple[str, str]], r
                 problems.append(f"{tag} number {raw} is not in the evidence pack")
         for name in forbidden_names:
             last = name.split()[-1]
-            if name in body or (len(last) > 3 and re.search(rf"\b{re.escape(last)}\b", body)):
+            surname_hit = len(last) > 3 and last not in allowed_tokens and re.search(rf"\b{re.escape(last)}\b", body)
+            if name in body or surname_hit:
                 problems.append(f"{tag} names '{name}', who is not part of this moment")
         low = body.lower()
         for b in BANNED:

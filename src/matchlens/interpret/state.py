@@ -131,6 +131,7 @@ class MatchInterpreter:
         self.last_momentum_check = 0.0
         self.last_moment_t: dict[str, float] = {}
         self.ended = False
+        self.last_tracking_t0 = -1.0
         self.state_every_s = state_every_s
         self.momentum_check_s = momentum_check_s
 
@@ -148,6 +149,9 @@ class MatchInterpreter:
             self._on_event(ev, out, msg.trace_id)
         elif msg.kind == "tracking":
             batch = TrackingBatch.model_validate(msg.payload)
+            if batch.t0_s <= self.last_tracking_t0:
+                return out  # duplicate or replayed batch
+            self.last_tracking_t0 = batch.t0_s
             self._on_tracking(batch, out, msg.trace_id)
         elif msg.kind == "end":
             self.ended = True
@@ -309,8 +313,10 @@ class MatchInterpreter:
                 self.window.append(WindowEvent(ev.clock_s, team, "turnover"))
             if ev.type != "foul":
                 self._set_possession(team, ev.clock_s)
+                self.chain = [ev]  # the possession starts with the ball-winning action
         elif ev.type == "recovery" and team:
             self._set_possession(team, ev.clock_s)
+            self.chain = [ev]
         elif ev.type == "pressure" and team:
             self.teams[team].pressures += 1
         elif ev.type == "shot" and team:
@@ -414,8 +420,10 @@ class MatchInterpreter:
             players = list(dict.fromkeys(e.player_id for e in chain[-6:] if e.player_id))
             dur = (ev.clock_s - chain[0].clock_s) if chain else 0.0
             prog = sum(float(e.qualifiers.get("progressive_m", 0.0)) for e in chain)
+            started = "turnover" if chain and chain[0].type in ("tackle", "interception", "recovery") else "build-up"
             evidence = [
                 EvidenceItem(key="xg", label="Shot xG", value=r2(xg)),
+                EvidenceItem(key="started_from", label="Move started from", value=started),
                 EvidenceItem(key="chain_passes", label="Passes in the move", value=len(passes)),
                 EvidenceItem(key="chain_duration_s", label="Move duration", value=round(dur), unit="s"),
                 EvidenceItem(key="progressive_m", label="Metres gained towards goal", value=round(prog), unit="m"),
