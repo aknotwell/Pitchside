@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -215,6 +216,27 @@ async def ask(request: Request):
     except Exception as exc:
         log.warning("ask failed: %s", exc)
         raise HTTPException(502, "the agent is unavailable right now") from exc
+
+
+AUDIO_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}/[A-Za-z0-9_.-]{1,120}\.mp3$")
+
+
+@app.get("/api/audio/{match_id}/{name}")
+async def audio(match_id: str, name: str, request: Request):
+    """Stream a voiced recap from private Blob storage (read with the API's managed identity)."""
+    from azure.storage.blob.aio import BlobClient
+    from fastapi.responses import Response
+
+    path = f"{match_id}/{name}"
+    if not AUDIO_NAME.match(path):
+        raise HTTPException(400, "bad audio name")
+    blob = BlobClient(settings().storage_blob_endpoint, "audio", path, credential=request.app.state.cred)
+    try:
+        async with blob:
+            data = await (await blob.download_blob()).readall()
+    except Exception as exc:
+        raise HTTPException(404, "audio not found") from exc
+    return Response(data, media_type="audio/mpeg", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.post("/api/chaos")

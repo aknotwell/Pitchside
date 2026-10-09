@@ -52,6 +52,12 @@ class StorytellerService:
                                  checkpoint_storage=storage, fault=self._chaos_fault)
         self.chaos_armed = False
         self.sb = ServiceBusClient(s.servicebus_fqdn, credential=self.cred)
+        from azure.storage.blob.aio import BlobServiceClient
+
+        from matchlens.story.speech import Speech
+
+        self.speech = Speech(self.cred)
+        self.audio = BlobServiceClient(s.storage_blob_endpoint, credential=self.cred).get_container_client("audio")
         log.info("storyteller: %d session workers on %s/%s, models %s", WORKERS, s.servicebus_fqdn,
                  s.servicebus_queue, s.foundry_deployments)
         async with self.sb:
@@ -82,6 +88,28 @@ class StorytellerService:
                                          "lastFiredAt": time.time(), "target": "storyteller"})
         finally:
             os._exit(17)  # hard exit: no graceful shutdown, exactly like a crashed node
+
+    # ------------------------------------------------------------ audio recaps
+    async def _voice(self, moment: Moment, cues) -> None:
+        """Voice the fan (casual) recap in every language; attach the audio path to every cue of that language."""
+        if not self.speech.enabled:
+            return
+
+        async def one(lang: str, text: str):
+            try:
+                audio = await self.speech.synthesize(text, lang)
+                name = f"{moment.match_id}/{moment.moment_id}-{lang}.mp3"
+                await self.audio.upload_blob(name, audio, overwrite=True)
+                return lang, f"/api/audio/{name}"
+            except Exception as exc:
+                log.warning("speech failed for %s/%s: %s", moment.moment_id, lang, exc)
+                return lang, None
+
+        casual = {c.lang: f"{c.title}. {c.text}" for c in cues if c.persona == "casual"}
+        paths = dict(await asyncio.gather(*(one(lang, text) for lang, text in casual.items())))
+        for c in cues:
+            if paths.get(c.lang):
+                c.data["audio"] = paths[c.lang]
 
     # ------------------------------------------------------------ work
     async def _roster(self, match_id: str) -> None:
@@ -129,6 +157,8 @@ class StorytellerService:
                 log.warning("workflow failed for %s: %s (abandoning for redelivery)", moment.moment_id, exc)
                 await receiver.abandon_message(msg)
                 return
+            if moment.kind in ("half_time", "full_time") and cues:
+                await self._voice(moment, cues)
             await asyncio.gather(*(create_once(self.cues, c.to_doc()) for c in cues))
             await self.runs.upsert_item({"id": f"run-{moment.moment_id}", "matchId": moment.match_id,
                                          "type": "storyRun", "at": time.time(), **info})

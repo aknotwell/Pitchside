@@ -81,7 +81,7 @@ resource blobs 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
   name: 'default'
 }
 
-resource blobContainers 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = [for n in [ 'ehcheckpoints', 'deployments', 'params', 'replays', 'raw-open-data' ]: {
+resource blobContainers 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = [for n in [ 'ehcheckpoints', 'deployments', 'params', 'replays', 'raw-open-data', 'audio' ]: {
   parent: blobs
   name: n
 }]

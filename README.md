@@ -58,7 +58,7 @@ flowchart LR
 | **Interpret** | Deterministic, idempotent metrics: xG, possession, pass accuracy, final-third entries, PPDA (match and rolling), momentum, a control-vs-chaos index, distance, top speed and sprints. A replay gives byte-identical state (tested) |
 | **Explain** | Detectors raise moments (goal, big chance, momentum swing, pressing surge, half time and full time) with an **evidence pack**. An Agent Framework workflow (Editor → Explainer → Verifier → Director) writes the *why* |
 | **Render** | Machine-readable `OverlayCue`s with `display_at_s`, TTL, priority and template, timed against a 10 s broadcast delay so agent latency is invisible. Shown on a live 2D pitch with lower-thirds, player speed tags and recap panels |
-| **Personalize** | Analyst vs casual register, three languages (one non-Latin), all from one structured model call per moment |
+| **Personalize** | Analyst vs casual register, three languages (one non-Latin), all from one structured model call per moment. Recaps are also **voiced** in each language |
 
 ### Three latency paths
 
@@ -126,6 +126,8 @@ flowchart LR
 | Azure Event Hubs / Service Bus | Stream backbone / moment queue with sessions |
 | Azure Web PubSub | Live push to browsers, Entra-authorized |
 | Azure Static Web Apps | The overlay player |
+| Azure AI Speech | Half-time and full-time recaps voiced in English, Spanish and Japanese (Foundry resource, Entra auth), stored in private Blob storage and streamed by the API |
+| Azure AI Evaluation (Foundry evaluators) | `scripts/evaluate.py`: groundedness **4.75/5**, coherence **3.88/5** on golden moments; a gate in the deploy workflow |
 | Application Insights | OpenTelemetry for every service |
 | azd + Bicep, GitHub Actions | One-command deploy, CI, keyless CD |
 

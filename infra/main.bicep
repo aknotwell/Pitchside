@@ -63,6 +63,7 @@ var roles = {
   wpsOwner: '12cf5a90-567b-43ae-8102-96cf46c7d9b4'
   openAiUser: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
   foundryUser: '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+  speechUser: 'f2dc8367-1007-4938-bd23-fe263f013447'
 }
 
 module monitoring 'modules/monitoring.bicep' = {
@@ -94,6 +95,7 @@ module data 'modules/data.bicep' = {
     storageRoles: concat(
       [
         { principalId: ids.interpreter.principalId, roleId: roles.blobContributor, principalType: svc }
+        { principalId: ids.storyteller.principalId, roleId: roles.blobContributor, principalType: svc }
         { principalId: ids.simulator.principalId, roleId: roles.blobContributor, principalType: svc }
         { principalId: ids.api.principalId, roleId: roles.blobContributor, principalType: svc }
         { principalId: ids.functions.principalId, roleId: roles.blobOwner, principalType: svc }
@@ -143,8 +145,10 @@ module foundry 'modules/foundry.bicep' = {
         { principalId: ids.storyteller.principalId, roleId: roles.openAiUser, principalType: svc }
         { principalId: ids.storyteller.principalId, roleId: roles.foundryUser, principalType: svc }
         { principalId: ids.api.principalId, roleId: roles.foundryUser, principalType: svc }
+        { principalId: ids.storyteller.principalId, roleId: roles.speechUser, principalType: svc }
       ],
       hasUser ? [
+        { principalId: principalId, roleId: roles.speechUser, principalType: principalType }
         { principalId: principalId, roleId: roles.openAiUser, principalType: principalType }
         { principalId: principalId, roleId: roles.foundryUser, principalType: principalType }
       ] : [])
@@ -216,6 +220,8 @@ var commonEnv = [
   { name: 'KEYVAULT_URI', value: keyvault.outputs.uri }
   { name: 'MCP_URL', value: 'https://func-cues-${resourceToken}.azurewebsites.net/runtime/webhooks/mcp' }
   { name: 'ASK_DEPLOYMENT', value: 'gpt-4.1-mini' }
+  { name: 'SPEECH_RESOURCE_ID', value: foundry.outputs.accountId }
+  { name: 'SPEECH_REGION', value: location }
 ]
 
 module aca 'modules/aca.bicep' = {

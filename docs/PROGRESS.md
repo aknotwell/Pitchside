@@ -307,3 +307,32 @@ Model tokens are cents per match. The free-trial credit covers it.
 6. Calibration round 2: IDSSE (CC BY 4.0) for tracking-level metrics; reduce
    the shots and pass-length gaps.
 7. Polish the UI; record the **< 2 min video**.
+
+## Checkpoint 5: evaluation gate and voiced recaps (2026-10-09)
+
+- **Evaluation gate:** `scripts/evaluate.py`, documented in
+  `docs/evidence/eval-*.md`.
+  - Golden moments come from calibrated seeds, run through the real storyteller
+    and scored with the Azure AI Evaluation SDK (Foundry `gpt-4.1-mini` judge,
+    Entra auth).
+  - Results:
+
+    | Metric | Value | Threshold |
+    |---|---|---|
+    | Groundedness | **4.75/5** | ≥ 4 |
+    | Coherence | **3.88/5** | ≥ 3.5 |
+    | Agent-written and verified | **88%** | ≥ 85% |
+    | Latency p50 / p95 | 9.4 s / 19.6 s | p95 ≤ 30 s |
+
+  - Wired into `.github/workflows/deploy.yml` after deploy.
+  - The fallback recap scored 3/5 for being bland, so the recap templates now
+    name the clubs and add shots.
+- **Voiced recaps:** Azure AI Speech, through the Foundry resource's Speech
+  endpoint with an Entra token (`aad#resourceId#token`).
+  - Voices: en Ava Multilingual, es Elvira, ja Nanami.
+  - The storyteller voices the fan recap per language, uploads it to the
+    private Blob container `audio`, and attaches `data.audio`.
+  - The API streams `/api/audio/{match}/{file}.mp3` with a strict name regex.
+    The recap panel has a player.
+  - Verified: the Spanish half-time recap is 64 KB of MP3, served 200
+    `audio/mpeg`.

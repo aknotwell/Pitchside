@@ -1,3 +1,4 @@
+import { API } from "../api";
 import type { Cue } from "../types";
 
 function badge(c: Cue) {
@@ -15,6 +16,7 @@ export function Overlay({ cues, onWhy }: { cues: Cue[]; onWhy: (c: Cue) => void 
         <div className="panel">
           <div className="panel-title">{panel.title} {badge(panel)}</div>
           <p>{panel.text}</p>
+          {typeof panel.data.audio === "string" && <audio controls preload="none" src={`${API}${panel.data.audio}`} aria-label="Listen to the recap" />}
           <button className="why" onClick={() => onWhy(panel)}>Why?</button>
         </div>
       )}
