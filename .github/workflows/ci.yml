@@ -29,4 +29,9 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run pytest -q
+      - name: Tests
+        run: uv run pytest -q --junitxml=pytest-report.xml
+      # Show the test counts on the run's summary page, so a PR shows what actually ran.
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        run: uv run python scripts/test_summary.py pytest-report.xml >> "$GITHUB_STEP_SUMMARY"
