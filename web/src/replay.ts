@@ -8,7 +8,7 @@ interface ReplayPackage {
   matchId: string;
   meta: MatchMeta;
   playerIds: string[];
-  frames: [number, number, number, ([number, number] | null)[]][];
+  frames: [number, number, number, ([number, number] | null)[], number?][];
   events: { event_id: string; clock_s: number; display_clock: string; type: string; team_id: string | null; outcome: string | null; period: number }[];
   cues: Cue[];
 }
@@ -38,8 +38,8 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
     fetch(`${API}/api/replays/${matchId}`).then((r) => r.json()).then((p: ReplayPackage) => {
       if (stopped) return;
       pkg.current = p;
-      frames.current = p.frames.map(([t, bx, by, pl]) => ({
-        t_s: t, ball: [bx, by, 0] as [number, number, number],
+      frames.current = p.frames.map(([t, bx, by, pl, bz]) => ({
+        t_s: t, ball: [bx, by, bz ?? 0] as [number, number, number],
         players: p.playerIds.flatMap((id, j) => (pl[j] ? [{ id, x: pl[j]![0], y: pl[j]![1] }] : [])),
       }));
       start.current = { wall: performance.now() / 1000, t0: p.frames[0]?.[0] ?? 0 };

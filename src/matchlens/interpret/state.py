@@ -551,8 +551,8 @@ class MatchInterpreter:
                 ev, "player_tag.speed", f"{name}", f"Top speed {mps * 3.6:.1f} km/h  ·  {ph.distance_m / 1000:.1f} km covered",
                 4, {"playerId": pid, "player": name, "kmh": r2(mps * 3.6), "distanceKm": r2(ph.distance_m / 1000)},
                 trace_id, [EvidenceItem(key="top_speed_kmh", label="Top speed", value=r2(mps * 3.6), unit="km/h")], ttl=5))
-        # Downsample to 2 Hz for the browser's live pitch
-        step = max(1, batch.fps // 2)
+        # Downsample to 5 Hz for the browser's live pitch (2 Hz made passes look like they braked near players)
+        step = max(1, batch.fps // 5)
         out.frames = {
             "matchId": self.match_id,
             "t0": batch.t0_s,

@@ -36,6 +36,7 @@ from matchlens.contracts import (
     StreamMessage,
     TrackingBatch,
 )
+from matchlens.sim import ball as phys
 from matchlens.sim.params import load_params, params_version
 from matchlens.world import FORMATIONS, TRAITS, make_fixture
 
@@ -192,6 +193,8 @@ class _Flight:
     speed: float = 15.0
     lofted: bool = False
     result: str = ""  # shots: goal | catch | parry | parry_corner | block | block_corner | wide
+    duel_done: bool = False
+    tried: set[int] = field(default_factory=set)  # teammates who have had their go at controlling it
 
 
 @dataclass
@@ -343,7 +346,8 @@ class MatchEngine:
         self.pos = np.full((P, 2), np.nan)
         self.vel = np.zeros((P, 2))
         self.ball = np.zeros(3)
-        self.ball_vel = np.zeros(2)
+        self.bv = np.zeros(3)  # ball velocity while it is free or being dribbled
+        self.force_back = False
         self.drift = np.zeros((P, 2))
         self.run_until = np.zeros(P)
         self.run_tgt = np.zeros((P, 2))
@@ -443,7 +447,7 @@ class MatchEngine:
                     self.pos[i] = np.array([x, ay * 0.9]) * SIGN[tid]
                     self.vel[i] = 0.0
             self.ball[:] = 0.0
-            self.ball_vel[:] = 0.0
+            self.bv[:] = 0.0
         self._set_dead(t, "kickoff", team, np.zeros(2), delay=delay)
 
     def _taker(self, kind: str, team: str, spot: np.ndarray) -> int:
@@ -547,6 +551,7 @@ class MatchEngine:
         self.setpiece = setpiece
         self.in_hands = how == "catch"
         self.force_shot = how == "header_chance" or setpiece == "penalty"
+        self.force_back = how == "back_to_keeper"
         self.header_chance = how == "header_chance"
         self.pressed: set[int] = set()
         self.carry_start = (t, self.ball[:2].copy())
@@ -560,7 +565,7 @@ class MatchEngine:
             delay = rng.uniform(0.4, 1.4)
         elif how == "catch":
             delay = rng.uniform(2.5, 6.0)
-        elif self.force_shot:
+        elif self.force_shot or self.force_back:
             delay = rng.uniform(0.0, 0.15)
         else:
             delay = rng.uniform(*p["decision_s"]) * (1.25 - 0.5 * comp) / max(0.6, tempo)
@@ -617,6 +622,11 @@ class MatchEngine:
         tid = self.tid_of[i]
         opp = other(tid)
         b = self.ball[:2]
+        if abs(b[0]) > HALF_LENGTH + phys.RADIUS or abs(b[1]) > HALF_WIDTH + phys.RADIUS:
+            self._end_carry(t)  # dribbled over a line
+            self.last_touch = tid
+            self._ball_out(t)
+            return
         if not self.in_hands and not self.setpiece:
             opps = self.ts[opp].on
             d = _dist(self.pos[opps], b)
@@ -628,12 +638,17 @@ class MatchEngine:
             order = np.argsort(d)
             in_box = SIGN[tid] * b[0] > BOX_X and abs(b[1]) < BOX_Y
             danger = min(1.0, threat(SIGN[tid] * b[0], SIGN[tid] * b[1]) / 0.12)
+            crowd = int(np.sum((d < 2.2) & ~self.is_gk[np.array(opps)]))  # opponents swarming the ball
             v = self.vel[i]
             sp_i = math.hypot(v[0], v[1])
+            exposed = float(np.linalg.norm(b - self.pos[i])) > 0.9  # the ball is out of the carrier's reach
             for o in order[:2]:
                 j = opps[o]
                 if d[o] > 1.7 or self.beaten_until[j] > t or self.is_gk[j]:
                     continue
+                if exposed and d[o] < 0.8 and rng.random() < p["nick_prob"] * (0.5 + self.tr["tackling"][j]):
+                    self._tackle(t, i, j, nick=True)  # a loose touch, and the defender gets a toe to it
+                    return
                 # Running at a defender who is in the way is a take-on: it is settled now.
                 rel = self.pos[j] - self.pos[i]
                 if (d[o] < 1.3 and sp_i > 1.5 and (rel @ v) / (sp_i * (np.linalg.norm(rel) + 1e-6)) > 0.4
@@ -642,7 +657,9 @@ class MatchEngine:
                     return
                 rate = p["tackle_rate_per_s"] * (0.45 + self.tr["aggression"][j]) * (0.8 + 0.5 * press)
                 # Defenders step in when the carrier gets near goal; they stay on their feet in the box.
-                rate *= (1.0 + 0.5 * danger) * (0.6 if in_box else 1.0)
+                rate *= (1.0 + 0.5 * danger) * (p["box_tackle_factor"] if in_box else 1.0)
+                # Two or three around the ball: much harder to keep it.
+                rate *= 1.0 + p["crowd_tackle_boost"] * max(0, crowd - 1)
                 if rng.random() < rate * self.dt:
                     self._tackle(t, i, j)
                     return
@@ -653,7 +670,7 @@ class MatchEngine:
         if t >= self.decide_t or (reached and not self.setpiece and not self.in_hands):
             self._decide(t)
 
-    def _tackle(self, t: float, i: int, j: int, take_on: bool = False) -> None:
+    def _tackle(self, t: float, i: int, j: int, take_on: bool = False, nick: bool = False) -> None:
         p, rng = self.p, self.rng
         tid = self.tid_of[i]
         opp = other(tid)
@@ -664,10 +681,12 @@ class MatchEngine:
             p_foul *= p["box_foul_factor"]  # defenders know a foul here is a penalty
         if take_on:  # a defender standing their ground fouls less than one lunging in
             p_foul *= 0.5
+        if nick:
+            p_foul *= 0.3
         if rng.random() < p_foul:
             self._end_carry(t)
             self._emit(t, "foul", opp, j, x=b[0], y=b[1], related_player_id=self.ids[i],
-                       qualifiers={"challenge": "take_on" if take_on else "tackle"})
+                       qualifiers={"challenge": "nick" if nick else ("take_on" if take_on else "tackle")})
             if not self.yellow[j] and rng.random() < p["card_share_of_fouls"] * (0.6 + agg):
                 self.yellow[j] = True
                 self._emit(t + 1.0, "card", opp, j, outcome="yellow")
@@ -680,16 +699,18 @@ class MatchEngine:
         speed_i = float(np.linalg.norm(self.vel[i]))
         p_win = sigmoid(2.4 * (tack - self.tr["dribbling"][i]) + p["tackle_win_logit"] + (p["take_on_logit"] if take_on else 0.0)
                         + (0.4 if self.shielding is False and speed_i < 1.5 else 0.0)
+                        - (0.7 * self.tr["composure"][i] if self.shielding else 0.0)  # a good shield is hard to get round
+                        + (1.5 if nick else 0.0)
                         - 0.5 * (self.tr["composure"][i] - 0.5))
         if rng.random() < p_win:
             self._end_carry(t)
             self._emit(t, "tackle", opp, j, x=b[0], y=b[1], outcome="won", related_player_id=self.ids[i],
-                       qualifiers={"challenge": "take_on" if take_on else "tackle"})
+                       qualifiers={"challenge": "nick" if nick else ("take_on" if take_on else "tackle")})
             if rng.random() < 0.55 + 0.3 * self.tr["first_touch"][j]:
                 self._gain(j, t)
             else:  # poked away: a loose ball either side can win
                 ang = rng.uniform(0, 2 * math.pi)
-                self._loose(t, np.array([math.cos(ang), math.sin(ang)]) * rng.uniform(3, 7), team=opp)
+                self._loose(t, np.array([math.cos(ang), math.sin(ang), 0.0]) * rng.uniform(3, 8), team=opp)
                 self.poss = opp
         else:  # beaten: the defender is out of the play for a moment
             self.beaten_until[j] = t + 1.0 + 1.2 * self.tr["flair"][i]
@@ -723,6 +744,15 @@ class MatchEngine:
         utils: list[float] = []
         acts: list[tuple] = []
 
+        if self.force_back:  # first time, straight back to the keeper
+            self.force_back = False
+            gk = st.on[0]
+            if gk != i:
+                gpos = self.pos[gk] * s
+                self._end_carry(t)
+                self._pass(t, i, gk, gpos + np.array([1.5, 0.0]), False, 12.0, "back_pass", 0.95, pr)
+                return
+
         # --- shot
         dist, ang = shot_geometry(b[0], b[1])
         max_d = p["shot_max_dist_m"] + 8 * (tr["long_shots"][i] - 0.5)
@@ -740,13 +770,17 @@ class MatchEngine:
                 along = rel @ u
                 perp = np.abs(rel[:, 0] * u[1] - rel[:, 1] * u[0])
                 outfield = ~self.is_gk[opps]
-                blockers = int(np.sum(outfield & (along > 0.5) & (along < L - 1.0) & (perp < 1.0 + 0.09 * along)))
+                # Bodies in the way: anyone near the line of the shot, especially close to the shooter.
+                blockers = int(np.sum(outfield & (along > 0.5) & (along < min(L - 1.0, 14.0)) & (perp < 1.4 + 0.12 * along)))
                 header = self.header_chance
                 xg *= (0.8 if dmin < 2.5 else 1.0) * (0.55 if header else 1.0) * (0.8 ** blockers)
                 if sp == "free_kick":
                     xg *= 0.6
             skill = tr["finishing"][i] if dist < 18 else 0.5 * (tr["finishing"][i] + tr["long_shots"][i])
             u_shot = xg * p["shot_bias"] * (0.65 + 0.7 * skill) + 0.004 * flair
+            if b[0] > BOX_X and abs(b[1]) < BOX_Y and blockers == 0 and dmin > 2.5:
+                sight = min(1.0, max(0.0, (ang - 0.2) / 0.35))  # how much of the goal they can see
+                u_shot += p["box_space_shot_bonus"] * sight * min(1.0, (dmin - 2.5) / 3.0 + 0.5)  # a clear sight of goal: hit it
             if dist > 16 and sp != "penalty":  # some players just love to shoot from range
                 u_shot += p["long_shot_pref"] * tr["long_shots"][i] ** 2 * (1 if blockers == 0 else 0.4)
             if self.force_shot:
@@ -769,7 +803,8 @@ class MatchEngine:
             rvel = self.vel[j] * s
             if self.is_gk[j] and (b[0] > -20 or sp == "goal_kick"):
                 continue
-            tgt = rpos + rvel * 0.5
+            lead = min(1.5, 0.45 + float(np.linalg.norm(rpos - b)) / 25.0)  # aim where they will be when it arrives
+            tgt = rpos + rvel * lead
             cands.append((j, tgt, "short"))
             if self.run_until[j] > t and rvel[0] > 2.0:
                 lead = rpos + rvel * 1.4 + np.array([3.0, 0.0])
@@ -808,7 +843,7 @@ class MatchEngine:
                     continue
                 gain = T_[n, 0] - b[0]
                 val = p["pass_value_discount"] * threat(T_[n, 0], T_[n, 1])
-                u_ = (p_succ[n] * val - (1 - p_succ[n]) * turnover_cost(b[0])
+                u_ = (p_succ[n] * val - (1 - p_succ[n]) * p["turnover_weight"] * turnover_cost(b[0])
                       + 0.0012 * sty["directness"] * max(0.0, gain) * (1 if L[n] > 25 else 0.5)
                       + 0.012 * (1 - sty["directness"]) * p_succ[n]
                       + (0.006 * flair if kind == "through" else 0.0))
@@ -820,7 +855,8 @@ class MatchEngine:
 
         # --- clearance: deep in your own third, sometimes you just get it away
         in_own_box = b[0] < -BOX_X and abs(b[1]) < BOX_Y
-        if sp is None and not self.in_hands and not self.is_gk[i] and b[0] < -HALF_LENGTH + 30 and (pr > 0.4 or in_own_box):
+        if (sp is None and not self.in_hands and not self.is_gk[i] and b[0] < -HALF_LENGTH + 30
+                and (pr > 0.7 or (in_own_box and pr > 0.25))):
             side = 1.0 if b[1] >= 0 else -1.0
             tgt = np.array([b[0] + rng.uniform(30, 50), side * rng.uniform(12, 33)])
             mates = [j for j in st.on if j != i]
@@ -833,8 +869,9 @@ class MatchEngine:
             drib = tr["dribbling"][i]
             for a in (0.0, 0.6, -0.6, 1.3, -1.3, math.pi):
                 dist_c = 2.5 if a == math.pi else 7.0
-                tgt = b + np.array([math.cos(a), math.sin(a)]) * dist_c
-                tgt = np.clip(tgt, [-HALF_LENGTH + 2, -HALF_WIDTH + 2], [HALF_LENGTH - 2, HALF_WIDTH - 2])
+                raw = b + np.array([math.cos(a), math.sin(a)]) * dist_c
+                tgt = np.clip(raw, [-HALF_LENGTH + 2, -HALF_WIDTH + 2], [HALF_LENGTH - 2, HALF_WIDTH - 2])
+                cut = float(np.linalg.norm(raw - tgt))  # running out of pitch: nowhere to go that way
                 t_c = dist_c / 5.0
                 # How close can each opponent get to the ball along the carry (now, a third, two thirds, the end)?
                 path = b + np.array([0.0, 0.33, 0.66, 1.0])[:, None] * (tgt - b)[None, :]
@@ -844,8 +881,13 @@ class MatchEngine:
                 z = 1.2 * space + 2.5 * (drib - 0.5) + p["carry_keep_logit"] + (1.0 if a == math.pi else 0.0)
                 risk = 1.0 / (1.0 + np.exp(np.clip(z, -30, 30)))
                 p_keep = float(np.prod(1.0 - risk))
-                u_ = (p_keep * p["carry_value_discount"] * threat(tgt[0], tgt[1]) - (1 - p_keep) * turnover_cost(b[0])
-                      + p["carry_bias"] * 0.01 + 0.004 * flair * drib - (0.006 if a == math.pi else 0.0))
+                if tgt[0] > BOX_X and abs(tgt[1]) < BOX_Y:  # into a crowded box: every defender nearby is a leg in the way
+                    n_box = int(np.sum(_dist(o_att, tgt) < 6.0))
+                    p_keep *= (1.0 - p["box_carry_risk"]) ** n_box
+                u_ = (p_keep * p["carry_value_discount"] * threat(tgt[0], tgt[1]) - (1 - p_keep) * p["turnover_weight"] * turnover_cost(b[0])
+                      + p["carry_bias"] * 0.01 + 0.004 * flair * drib - (0.006 if a == math.pi else 0.0)
+                      - 0.004 * cut
+                      + (p["shield_bias"] * pr * tr["composure"][i] if a == math.pi else 0.0))
                 u_ += rng.normal(0, 0.006 * (1.4 - vision))
                 utils.append(float(u_))
                 acts.append(("carry", tgt, a == math.pi))
@@ -890,12 +932,37 @@ class MatchEngine:
             err *= 2.0
         end_att = tgt + rng.normal(0, err, 2)
         end = end_att * s
-        L_act = float(np.linalg.norm(end - b))
-        dur = max(0.25, L_act / speed)
-        z = min(14.0, 0.18 * L_act) if lofted else 0.0
-        if self.setpiece == "throw_in":
-            z = 1.5
-        self.flight = _Flight("pass", t, t + dur, b, end, z, tid, i, receiver=j, speed=speed, lofted=lofted)
+        L_act = max(1.0, float(np.linalg.norm(end - b)))
+        u = (end - b) / L_act
+        z0 = 2.0 if self.setpiece == "throw_in" else float(self.ball[2])
+        if lofted or self.setpiece == "throw_in":
+            deg = {"clearance": (32, 44), "cross": (16, 28), "switch": (22, 30), "long": (22, 32)}.get(kind, (20, 30))
+            if self.setpiece == "goal_kick":
+                deg = (30, 40)
+            elif self.setpiece == "throw_in":
+                deg = (15, 30)
+            ang = math.radians(rng.uniform(*deg))
+            v0, dur = phys.lofted_kick(L_act, ang, z0)
+            vel = np.array([u[0] * v0 * math.cos(ang), u[1] * v0 * math.cos(ang), v0 * math.sin(ang)])
+        else:
+            arrive = min(12.0, 5.0 + 0.2 * L_act) * (0.65 if kind == "through" else 1.0) * (0.85 + 0.3 * (self.tr["passing"][i] - 0.5))
+            if kind == "back_pass":
+                arrive = 4.0
+            v0, dur = phys.ground_kick(L_act, arrive)
+            vel = np.array([u[0] * v0, u[1] * v0, 0.0])
+        speed = v0
+        self.ball[2] = z0
+        self.bv = vel
+        self.flight = _Flight("pass", t, t + max(0.2, dur), b, end, 0.0, tid, i, receiver=j, speed=speed, lofted=lofted)
+        if lofted:  # where it comes down through head height: that is where to attack it
+            pp, vv, tt = self.ball.copy(), vel.copy(), 0.0
+            while tt < 6.0:
+                phys.step(pp, vv, 0.05, substeps=1)
+                tt += 0.05
+                if vv[2] < 0 and pp[2] < 2.0:
+                    break
+            self.flight.end = pp[:2].copy()
+            self.flight.t1 = t + tt
         self.state = FLIGHT
         self.last_touch = tid
         prog = float(max(0.0, end_att[0] - b[0] * s))
@@ -932,7 +999,7 @@ class MatchEngine:
         else:
             split = dict(self.p["shot_outcome_split"])
             if blockers == 0:
-                split["blocked"] *= 0.25
+                split["blocked"] *= 0.5
             else:
                 split["blocked"] *= 1.0 + 0.6 * blockers
             outcome = str(rng.choice(list(split), p=np.array(list(split.values())) / sum(split.values())))
@@ -978,109 +1045,141 @@ class MatchEngine:
                 self._shot_lands(t, f)
             return
         bx, by, bz = self.ball
-        if abs(bx) > HALF_LENGTH + 0.3 or abs(by) > HALF_WIDTH + 0.3:
+        if abs(bx) > HALF_LENGTH + phys.RADIUS or abs(by) > HALF_WIDTH + phys.RADIUS:
             self._ball_out(t)
             return
-        opp = other(f.team)
-        opps = self.ts[opp].on
-        if bz < 2.3 and t > f.t0 + 0.15:
-            d = np.linalg.norm(self.pos[opps] - self.ball[:2], axis=1)
-            for o in np.argsort(d)[:2]:
-                j = opps[o]
-                reach = p["intercept_reach_m"] * (0.8 + 0.5 * self.tr["positioning"][j])
-                if self.is_gk[j]:
-                    reach *= 1.6
-                if d[o] > reach:
-                    continue
-                q = p["intercept_prob"] * (0.6 + 0.7 * self.tr["positioning"][j]) * max(0.3, 1.3 - f.speed / 22)
-                if rng.random() < q:
-                    b = self.ball[:2].copy()
-                    self._resolve_pass("intercepted", t)
-                    self._emit(t, "interception", opp, j, x=b[0], y=b[1])
-                    if rng.random() < 0.55 + 0.35 * self.tr["first_touch"][j]:
-                        self._gain(j, t)
-                    else:
-                        v = self.ball_vel_from_flight(f) * rng.uniform(0.2, 0.5)
-                        self._loose(t, v + rng.normal(0, 2, 2), team=opp)
-                        self.poss = opp
-                    return
-        if t < f.t1:
-            return
-        # Arrival: whoever is closest gets there first; a lofted ball is an aerial duel.
+        if t < f.t0 + 0.15:
+            return  # just struck
         act = self._active()
-        d = _dist(self.pos[act], f.end)
+        d = _dist(self.pos[act], self.ball[:2])
         order = np.argsort(d)
-        mates = [act[o] for o in order[:6] if self.tid_of[act[o]] == f.team and d[o] < 2.6]
-        foes = [act[o] for o in order[:6] if self.tid_of[act[o]] != f.team and d[o] < 2.6]
-        if not mates and not foes:
-            self._loose(t, self.ball_vel_from_flight(f) * 0.45, team=None)
-            return
-        a = mates[0] if mates else None
-        dfd = foes[0] if foes else None
-        if a is not None and dfd is not None:
-            da, dd_ = float(np.linalg.norm(self.pos[a] - f.end)), float(np.linalg.norm(self.pos[dfd] - f.end))
-            if f.lofted:
+        # A high ball dropping among players is an aerial duel.
+        if f.lofted and not f.duel_done and 0.9 < bz < 2.8 and self.bv[2] < 0:
+            near = [act[k] for k in order[:6] if d[k] < 1.6]
+            mates = [j for j in near if self.tid_of[j] == f.team]
+            foes = [j for j in near if self.tid_of[j] != f.team]
+            if mates and foes:
+                f.duel_done = True
+                a, dfd = mates[0], foes[0]
+                da, dd_ = float(np.linalg.norm(self.pos[a] - self.ball[:2])), float(np.linalg.norm(self.pos[dfd] - self.ball[:2]))
                 pa = sigmoid(3.0 * (self.tr["heading"][a] - self.tr["heading"][dfd]) + 0.8 * (dd_ - da) - 0.3)
-            else:
-                pa = sigmoid(1.5 * (dd_ - da) + 1.0)
-            winner = a if rng.random() < pa else dfd
-        else:
-            winner = a if a is not None else dfd
-        assert winner is not None
-        if self.tid_of[winner] != f.team:
-            b = self.ball[:2].copy()
-            self._resolve_pass("intercepted", t)
-            self._emit(t, "interception", other(f.team), winner, x=b[0], y=b[1])
-            if f.lofted and SIGN[self.tid_of[winner]] * b[0] < -25:  # headed clear
-                away = np.array([SIGN[self.tid_of[winner]] * rng.uniform(10, 18), rng.normal(0, 6)])
-                self._loose(t, away, team=self.tid_of[winner])
-                self.poss = self.tid_of[winner]
-            else:
-                self._gain(winner, t)
-            return
-        # A teammate gets there: control, or a heavy touch.
-        near_opp = float(np.linalg.norm(self.pos[opps] - f.end, axis=1).min())
-        pc = (p["control_base"] + 0.08 * (self.tr["first_touch"][winner] - 0.5) - 0.12 * (near_opp < 2.0)
-              - 0.08 * f.lofted - 0.04 * (f.speed > 20))
-        xa = SIGN[f.team] * f.end[0]
-        box = xa > BOX_X and abs(f.end[1]) < BOX_Y
-        if f.lofted and box and rng.random() < p["header_chance"] * (0.5 + self.tr["heading"][winner]):
-            self._gain(winner, t, how="header_chance")
-            return
-        if rng.random() < pc:
-            self._gain(winner, t)
-        else:
-            self._loose(t, self.ball_vel_from_flight(f) * 0.25 + rng.normal(0, 1.5, 2), team=f.team)
+                self._win_ball(t, a if rng.random() < pa else dfd, f)
+                return
+        for k in order[:5]:
+            j = act[k]
+            if j == f.kicker and t < f.t0 + 0.6:
+                continue
+            gk_hands = self.is_gk[j] and self._in_own_box(j) and bz < 2.6
+            reach = 0.95 if bz < 0.9 else (1.7 if bz < 2.8 else 0.0)  # feet, or attack it: a leap, a lunge, a diving header
+            if gk_hands:
+                reach = max(reach, 1.4)
+            if d[k] > reach:
+                continue
+            sp = float(np.linalg.norm(self.bv))
+            if self.tid_of[j] != f.team:  # can they cut it out?
+                q = p["intercept_prob"] * (0.6 + 0.7 * self.tr["positioning"][j]) * max(0.3, 1.3 - sp / 22)
+                if gk_hands:
+                    q = max(q, 0.85)
+                if rng.random() < q:
+                    self._win_ball(t, j, f)
+                    return
+            elif j not in f.tried:  # a teammate gets one go at controlling it
+                f.tried.add(j)
+                opps = self.ts[other(f.team)].on
+                near_opp = float(_dist(self.pos[opps], self.ball[:2]).min())
+                pc = (p["control_base"] + 0.08 * (self.tr["first_touch"][j] - 0.5) - 0.012 * max(0.0, sp - 8)
+                      - 0.08 * (bz > 0.9) - 0.12 * (near_opp < 2.0))
+                if j != f.receiver:
+                    pc *= 0.7
+                if rng.random() < pc:
+                    self._win_ball(t, j, f)
+                else:  # heavy touch: it squirts away
+                    v = self.bv * rng.uniform(0.2, 0.45)
+                    v[:2] += rng.normal(0, 1.5, 2)
+                    self._loose(t, v, team=f.team)
+                return
+        if bz <= 1e-3 and float(np.linalg.norm(self.bv[:2])) < 0.6:
+            self._loose(t, self.bv, team=None)  # it has died on the grass: first one there has it
 
-    def ball_vel_from_flight(self, f: _Flight) -> np.ndarray:
-        v = f.end - f.start
-        n = float(np.linalg.norm(v)) + 1e-6
-        return v / n * f.speed
+    def _in_own_box(self, j: int) -> bool:
+        x = SIGN[self.tid_of[j]] * self.ball[0]
+        return x < -BOX_X and abs(self.ball[1]) < BOX_Y
+
+    def _keeper_free(self, tid: str) -> bool:
+        gk = self.ts[tid].on[0]
+        opps = self.ts[other(tid)].on
+        return float(_dist(self.pos[opps], self.pos[gk]).min()) > 7.0
+
+    def _win_ball(self, t: float, j: int, f: _Flight) -> None:
+        """Player j reaches a ball in flight first."""
+        p, rng = self.p, self.rng
+        tid = self.tid_of[j]
+        b = self.ball[:2].copy()
+        high = self.ball[2] > 1.0
+        if tid != f.team:
+            self._resolve_pass("intercepted", t)
+            self._emit(t, "interception", tid, j, x=b[0], y=b[1])
+            own_third = SIGN[tid] * b[0] < -HALF_LENGTH + 35
+            if self.is_gk[j] and self._in_own_box(j):
+                self._gain(j, t, how="catch")
+                return
+            if (own_third and (f.lofted or f.speed > 15) and not self.is_gk[j] and self._keeper_free(tid)
+                    and rng.random() < p["back_to_keeper"] * (0.6 + 0.6 * self.tr["composure"][j])):
+                self._gain(j, t, how="back_to_keeper")  # first time, back to the keeper
+                return
+            if high and own_third and SIGN[tid] * b[0] < -HALF_LENGTH + 18 and rng.random() < p["header_behind"]:
+                # under pressure from the cross, headed behind for a corner
+                end_sign = -SIGN[tid]
+                spot = np.array([end_sign * (HALF_LENGTH - 0.3), math.copysign(HALF_WIDTH - 0.3, b[1] if b[1] else 1.0)])
+                self.last_touch = tid
+                self._emit(t + 0.4, "ball_out", tid, None, x=end_sign * HALF_LENGTH, y=b[1], qualifiers={"restart": "corner"})
+                self._set_dead(t, "corner", f.team, spot)
+                return
+            if high and own_third:  # headed clear
+                away = np.array([SIGN[tid] * rng.uniform(9, 16), rng.normal(0, 6), rng.uniform(3, 7)])
+                self._loose(t, away, team=tid)
+                self.poss = tid
+            elif not high and rng.random() < 0.55 + 0.35 * self.tr["first_touch"][j]:
+                self._gain(j, t)
+            else:  # got a touch, not control
+                v = self.bv * rng.uniform(0.2, 0.5)
+                v[:2] += rng.normal(0, 2, 2)
+                self._loose(t, v, team=tid)
+                self.poss = tid
+            return
+        xa = SIGN[f.team] * b[0]
+        box = xa > BOX_X and abs(b[1]) < BOX_Y
+        if f.lofted and box and high and rng.random() < p["header_chance"] * (0.5 + self.tr["heading"][j]):
+            self._gain(j, t, how="header_chance")
+        else:
+            self._gain(j, t)
 
     def _loose(self, t: float, vel: np.ndarray, team: str | None) -> None:
         self.state = LOOSE
         self.owner = -1
         self.flight = None
-        self.ball_vel = np.array(vel, dtype=float)
-        self.ball[2] = 0.0
+        v = np.zeros(3)
+        v[: len(vel)] = vel
+        self.bv = v
         self.loose_lock = t + 0.3
         if team is not None:
             self.last_touch = team
 
     def _loose_step(self, t: float) -> None:
-        bx, by = self.ball[:2]
-        if abs(bx) > HALF_LENGTH or abs(by) > HALF_WIDTH:
+        bx, by, bz = self.ball
+        if abs(bx) > HALF_LENGTH + phys.RADIUS or abs(by) > HALF_WIDTH + phys.RADIUS:
             self._ball_out(t)
             return
-        if t < self.loose_lock:
+        if t < self.loose_lock or bz > 2.0:
             return
         act = self._active()
         d = _dist(self.pos[act], self.ball[:2])
         o = int(np.argmin(d))
-        if d[o] > 1.1:
+        reach = 1.0 if bz < 0.9 else 0.7
+        if d[o] > reach:
             return
         w = act[o]
-        close = [act[k] for k in np.argsort(d)[:3] if d[k] < 1.1 and self.tid_of[act[k]] != self.tid_of[w]]
+        close = [act[k] for k in np.argsort(d)[:3] if d[k] < reach and self.tid_of[act[k]] != self.tid_of[w]]
         if close and self.rng.random() < 0.45:
             w = close[0]
         tid = self.tid_of[w]
@@ -1234,13 +1333,17 @@ class MatchEngine:
             tgt[self.owner] = self.carry_tgt
         elif self.state == FLIGHT and self.flight is not None and self.flight.kind == "pass":
             f = self.flight
-            if f.receiver >= 0:
-                tgt[f.receiver] = f.end
+            if f.receiver >= 0:  # to where it will land or arrive; once it is close, attack the ball itself
+                if f.lofted:  # hold the spot where it comes down through head height
+                    late = self.ball[2] < 0.9 and self.bv[2] <= 0 and t > f.t0 + 0.3
+                else:
+                    late = t > f.t1 - 0.3 or float(np.linalg.norm(self.ball[:2] - self.pos[f.receiver])) < 4.0
+                tgt[f.receiver] = self.ball[:2] + self.bv[:2] * 0.35 if late else f.end
                 urgent[f.receiver] = 0.9
         elif self.state == LOOSE:
             act = self._active()
             d = _dist(self.pos[act], b)
-            lead = b + self.ball_vel * 0.5
+            lead = b + self.bv[:2] * 0.5
             for tid in TEAMS:
                 mask = np.array([self.tid_of[i] == tid and not self.is_gk[i] for i in act])
                 idx = act[mask][np.argsort(d[mask])[:2]]
@@ -1315,6 +1418,9 @@ class MatchEngine:
                 g = own_goal - b
                 tgt[first] = b + g / (np.linalg.norm(g) + 1e-6) * jockey
                 urgent[first] = min(1.0, p["press_effort"] + 0.15 * press)
+                carrier_speed = float(np.linalg.norm(self.vel[self.owner]))
+                if near_goal or carrier_speed > 3.5:  # stay in front of a runner, whatever it costs
+                    urgent[first] = 0.97
                 engaged.add(first)
                 second = out[order[1]]
                 if (press > 0.65 and bx_own > -10 or near_goal) and d_sel[order[1]] < radius:
@@ -1422,34 +1528,65 @@ class MatchEngine:
     def _ball_step(self, t: float) -> None:
         dt = self.dt
         if self.state == OWNED and self.owner >= 0:
-            i = self.owner
-            v = self.vel[i]
-            n = float(np.linalg.norm(v))
-            if n > 0.4:
-                self._heading = v / n
-            elif not hasattr(self, "_heading"):
-                self._heading = np.array([SIGN[self.tid_of[i]], 0.0])
-            off = 0.35 + min(0.6, 0.08 * n)
-            self.ball[:2] = self.pos[i] + self._heading * off
-            self.ball[2] = 0.0
-            if self.in_hands:
-                self.ball[:2] = self.pos[i]
-                self.ball[2] = 1.0
-        elif self.state == FLIGHT and self.flight is not None:
+            self._dribble(t)
+        elif self.state == FLIGHT and self.flight is not None and self.flight.kind == "shot":
             f = self.flight
             fr = min(1.0, max(0.0, (t - f.t0) / max(1e-6, f.t1 - f.t0)))
             self.ball[:2] = f.start + (f.end - f.start) * fr
-            self.ball[2] = 4 * f.z * fr * (1 - fr) if f.kind == "pass" else f.z * fr
-        elif self.state == LOOSE:
-            self.ball[:2] += self.ball_vel * dt
-            self.ball_vel *= max(0.0, 1 - 0.9 * dt)
-            self.ball[2] = max(0.0, self.ball[2] - 2 * dt)
+            self.ball[2] = f.z * fr
+        elif self.state in (FLIGHT, LOOSE):
+            phys.step(self.ball, self.bv, dt)
         elif self.state == DEAD and self.restart is not None:
             g = self.restart.spot - self.ball[:2]
             n = float(np.linalg.norm(g))
             if n > 0.05:
                 self.ball[:2] += g / n * min(n, 10.0 * dt)
             self.ball[2] = 0.0
+            self.bv[:] = 0.0
+
+    def _dribble(self, t: float) -> None:
+        """Ball at the carrier's feet: close control when slow or shielding, touches ahead when running."""
+        i = self.owner
+        v = self.vel[i]
+        sp = math.hypot(v[0], v[1])
+        if sp > 0.4:
+            self._heading = v / sp
+        elif not hasattr(self, "_heading"):
+            self._heading = np.array([SIGN[self.tid_of[i]], 0.0])
+        if self.in_hands:
+            self.ball[:2] = self.pos[i]
+            self.ball[2] = 1.0
+            self.bv[:] = 0.0
+            return
+        opps = self.ts[other(self.tid_of[i])].on
+        dop = _dist(self.pos[opps], self.pos[i])
+        near = int(np.argmin(dop))
+        if self.setpiece or sp < 2.2 or self.shielding:
+            foot = self.pos[i] + self._heading * 0.35
+            if self.shielding and dop[near] < 3.0:  # body between ball and opponent
+                away = self.pos[i] - self.pos[opps[near]]
+                foot = self.pos[i] + away / (np.linalg.norm(away) + 1e-6) * 0.45
+            self.ball[:2] += (foot - self.ball[:2]) * min(1.0, self.dt * 8)
+            self.ball[2] = 0.0
+            self.bv[:2] = v
+            self.bv[2] = 0.0
+            return
+        phys.step(self.ball, self.bv, self.dt)
+        rel = self.ball[:2] - self.pos[i]
+        dist = float(np.linalg.norm(rel))
+        ball_along = float(self.bv[:2] @ self._heading)
+        if (dist < 0.7 and ball_along < sp) or rel @ self._heading < 0.15:  # the carrier catches it up: next touch
+            hurried = max(0.0, (3.0 - dop[near]) / 3.0)
+            k = 1.2 + 0.45 * (1 - self.tr["dribbling"][i]) + 0.5 * hurried * (1.2 - self.tr["first_touch"][i])
+            ang = self.rng.normal(0, 0.06 + 0.12 * hurried)
+            c, s_ = math.cos(ang), math.sin(ang)
+            h = self._heading
+            d_ = np.array([h[0] * c - h[1] * s_, h[0] * s_ + h[1] * c])
+            self.ball[:2] = self.pos[i] + h * 0.45
+            self.bv = np.array([d_[0] * sp * k, d_[1] * sp * k, 0.0])
+        elif dist > 4.0:  # ran away from them: it is anyone's
+            self._end_carry(t)
+            self._loose(t, self.bv, team=self.tid_of[i])
 
     # ------------------------------------------------------------------ public
     def simulate_events(self) -> None:

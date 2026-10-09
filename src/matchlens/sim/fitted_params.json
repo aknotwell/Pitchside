@@ -1,6 +1,6 @@
 {
- "params_version": "fit-skillcorner-agents-aec675ac98",
- "fitted_at": "2026-10-09T15:47:44Z",
+ "params_version": "fit-skillcorner-agents-f8819592b9",
+ "fitted_at": "2026-10-09T19:37:48Z",
  "source": "SkillCorner Open Data (github.com/SkillCorner/opendata), MIT licence",
  "targets": {
   "events": {
@@ -47,70 +47,83 @@
   "tackles_won_per_match": 38.0,
   "throw_ins_per_match": 40.0,
   "ball_in_play_share": 0.57,
-  "header_share_of_shots": 0.17
+  "header_share_of_shots": 0.17,
+  "clearances_per_match": 40.0,
+  "outside_box_shot_share": 0.38
  },
  "held_out": {
-  "passes_per_match": 828.375,
-  "pass_completion": 0.8021,
-  "shots_per_match": 25.6875,
-  "pass_length_mean_m": 20.1392,
-  "distance_km_per90_median": 10.7316,
-  "psv99_kmh_median": 25.9381,
-  "sprints_per90_median": 11.4721,
-  "goals_per_match": 2.4375,
-  "fouls_per_match": 25.3125,
-  "cards_per_match": 4.875,
-  "tackles_won_per_match": 55.6875,
-  "throw_ins_per_match": 30.5625,
-  "ball_in_play_share": 0.6608,
-  "header_share_of_shots": 0.1533
+  "passes_per_match": 777.9375,
+  "pass_completion": 0.873,
+  "shots_per_match": 26.25,
+  "pass_length_mean_m": 21.199,
+  "distance_km_per90_median": 10.9224,
+  "psv99_kmh_median": 26.2271,
+  "sprints_per90_median": 11.3309,
+  "goals_per_match": 3.4688,
+  "fouls_per_match": 16.125,
+  "cards_per_match": 2.9062,
+  "tackles_won_per_match": 44.1562,
+  "throw_ins_per_match": 50.9062,
+  "ball_in_play_share": 0.5532,
+  "header_share_of_shots": 0.1107,
+  "clearances_per_match": 75.1875,
+  "outside_box_shot_share": 0.2643
  },
  "params": {
   "version": "fit-skillcorner-agents",
   "period_min": 45,
   "decision_s": [
    0.3,
-   1.0
+   0.6
   ],
   "carry_s": [
    0.6,
-   2.225
+   1.5875
   ],
   "decision_temp": 0.005,
   "carry_bias": -1.0,
-  "carry_keep_logit": 0.875,
+  "turnover_weight": 1.0,
+  "carry_keep_logit": 0.125,
   "pass_value_discount": 0.85,
   "carry_value_discount": 0.75,
-  "shot_bias": 0.3,
+  "shot_bias": 0.5,
   "shot_max_dist_m": 30.0,
-  "long_shot_pref": 0.03,
+  "long_shot_pref": 0.05,
+  "box_space_shot_bonus": 0.005,
+  "box_carry_risk": 0.12,
+  "box_tackle_factor": 1.0,
   "pass_base": 0.97,
-  "pass_len_penalty_per_m": 0.0023,
+  "pass_len_penalty_per_m": 0.001,
   "pass_pressure_penalty": 0.12,
-  "pass_error_m": 1.3875,
-  "clear_value": 0.0225,
+  "pass_error_m": 0.6375,
+  "clear_value": 0.0075,
   "pass_max_len_m": [
    22.0,
    62.0
   ],
   "intercept_reach_m": 1.1,
-  "intercept_prob": 0.2275,
+  "intercept_prob": 0.1225,
   "control_base": 0.95,
   "engage_m": 14.0,
   "jockey_m": [
    1.0,
    3.2
   ],
-  "tackle_rate_per_s": 0.1125,
+  "tackle_rate_per_s": 0.3,
   "tackle_win_logit": 0.3,
-  "take_on_prob": 0.4187,
-  "press_effort": 0.5875,
+  "take_on_prob": 0.5562,
+  "nick_prob": 0.25,
+  "crowd_tackle_boost": 0.05,
+  "back_to_keeper": 0.5,
+  "header_behind": 0.3,
+  "shield_bias": 0.03,
+  "press_effort": 0.5,
   "take_on_logit": 0.0,
   "box_foul_factor": 0.08,
-  "header_chance": 0.1125,
-  "foul_share_of_tackles": 0.42,
-  "card_share_of_fouls": 0.15,
-  "xg_a": -0.4,
+  "header_chance": 0.4562,
+  "foul_share_of_tackles": 0.3,
+  "card_share_of_fouls": 0.16,
+  "xg_a": -0.8,
   "xg_b": -0.16,
   "xg_c": 1.6,
   "shot_outcome_split": {
@@ -118,8 +131,8 @@
    "off_target": 0.45,
    "blocked": 0.22
   },
-  "corner_after_save": 0.35,
-  "corner_after_block": 0.5,
+  "corner_after_save": 0.45,
+  "corner_after_block": 0.6,
   "restart_s": {
    "throw_in": [
     5,
@@ -150,7 +163,7 @@
     70
    ]
   },
-  "restart_scale": 1.3,
+  "restart_scale": 1.625,
   "stoppage_s": [
    60,
    240
@@ -160,7 +173,7 @@
    8.5625
   ],
   "max_accel_mps2": 4.2,
-  "steer_gain": 0.775,
+  "steer_gain": 1.1,
   "run_prob_per_s": 0.02,
   "drift_m": 2.0,
   "drift_tau_s": 15.0,

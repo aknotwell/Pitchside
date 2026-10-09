@@ -21,12 +21,16 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "carry_s": [0.6, 1.8],
     "decision_temp": 0.005,  # softmax temperature over option utilities; vision lowers it, flair raises it
     "carry_bias": -1.0,
+    "turnover_weight": 1.0,  # how much players fear giving the ball away (higher: safer, shorter passing)
     "carry_keep_logit": 0.5,
     "pass_value_discount": 0.85,  # a pass or carry only sets up the next action; a shot is the end product
     "carry_value_discount": 0.75,
     "shot_bias": 0.7,
     "shot_max_dist_m": 30.0,
     "long_shot_pref": 0.03,
+    "box_space_shot_bonus": 0.04,
+    "box_carry_risk": 0.12,  # per defender within 6 m, extra risk of dribbling into the box
+    "box_tackle_factor": 1.0,  # tackle rate in the box relative to elsewhere  # in the box, nobody in the way and room to shoot: take it
     # Passing
     "pass_base": 0.97,
     "pass_len_penalty_per_m": 0.004,
@@ -43,6 +47,11 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "tackle_rate_per_s": 0.3,
     "tackle_win_logit": 0.3,
     "take_on_prob": 0.35,  # per tick, when the carrier runs straight at a goal-side defender
+    "nick_prob": 0.25,  # per tick, a defender within reach of a loose touch gets a toe to it
+    "crowd_tackle_boost": 0.8,  # tackle rate multiplier per extra opponent around the ball
+    "back_to_keeper": 0.5,
+    "header_behind": 0.3,  # a defender heading a cross away near their own goal line puts it behind  # a defender who wins a long ball in their own third plays it first time to the keeper
+    "shield_bias": 0.03,  # extra pull towards shielding under pressure, scaled by composure
     "press_effort": 0.7,  # share of top speed for the pressing defender (more for pressing teams)
     "take_on_logit": 0.0,  # extra edge for the defender when the carrier runs straight at them
     "box_foul_factor": 0.08,

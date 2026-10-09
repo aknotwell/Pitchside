@@ -158,7 +158,8 @@ function kitFor(meta: MatchMeta, team: "h" | "a", pid: string): Kit {
   const h = hash(pid + meta.match_id);
   const shirt = keeper ? (team === "h" ? "#d6e030" : "#f08c2a") : t.color;
   const shorts = keeper ? "#222222" : team === "h" ? "#f2f2f2" : "#1b1b1b";
-  return { shirt, shorts, socks: keeper ? "#222222" : t.color, number: p?.number ?? 0, skin: SKIN[h % SKIN.length], hair: HAIR[(h >> 3) % HAIR.length], keeper };
+  return { shirt, shorts, socks: keeper ? "#222222" : t.color, number: p?.number ?? 0, skin: SKIN[h % SKIN.length],
+           hair: HAIR[(h >> 3) % HAIR.length], keeper, leftFooted: p?.foot === "L" };
 }
 
 export default function Pitch3D({ sample, meta, follow, camMode }: {
@@ -220,6 +221,8 @@ export default function Pitch3D({ sample, meta, follow, camMode }: {
     ball.castShadow = true;
     scene.add(ball);
     const ballPrev = new THREE.Vector3();
+    const ballVel = new THREE.Vector3();
+    let ballSpeedPrev = 0;
 
     const mats = new Map<string, THREE.Material>();
     const athletes = new Map<string, Athlete>();
@@ -261,6 +264,41 @@ export default function Pitch3D({ sample, meta, follow, camMode }: {
       const bx = f ? toX(f.ball[0]) : 0, bz = f ? toZ(f.ball[1]) : 0;
       if (f && m) {
         const seen = new Set<string>();
+        // Who has the ball, and are they holding someone off?
+        const bz0 = f.ball[2] ?? 0;
+        let carrier: string | null = null, best = 1.3;
+        for (const p of f.players) {
+          const dd = Math.hypot(p.x - f.ball[0], p.y - f.ball[1]);
+          if (dd < best && bz0 < 0.8) { best = dd; carrier = p.id; }
+        }
+        let shieldFrom: { id: string; at: THREE.Vector2 } | null = null;
+        if (carrier) {
+          const c = f.players.find((q) => q.id === carrier)!;
+          const ca = athletes.get(carrier);
+          let nd = 1.9;
+          for (const q of f.players) {
+            if (q.id[0] === carrier[0]) continue;
+            const dd = Math.hypot(q.x - c.x, q.y - c.y);
+            if (dd < nd) { nd = dd; shieldFrom = { id: carrier, at: new THREE.Vector2(toX(q.x), toZ(q.y)) }; }
+          }
+          if (shieldFrom && ca && ca.speed > 2.4) shieldFrom = null;  // running with it, not holding it up
+        }
+        // A sudden jump in ball speed next to a player is a kick.
+        const bnow = new THREE.Vector3(bx, 0.26 + bz0, bz);
+        if (dt > 0) {
+          const v = bnow.clone().sub(ballPrev).divideScalar(dt);
+          ballVel.lerp(v, 0.5);
+        }
+        const bspeed = ballVel.length();
+        if (bspeed - ballSpeedPrev > 5 && bspeed > 8) {
+          let kicker: Athlete | undefined, kd = 1.8;
+          for (const p of f.players) {
+            const dd = Math.hypot(p.x - f.ball[0], p.y - f.ball[1]);
+            if (dd < kd) { kd = dd; kicker = athletes.get(p.id); }
+          }
+          kicker?.kick();
+        }
+        ballSpeedPrev = bspeed;
         for (const p of f.players) {
           let a = athletes.get(p.id);
           if (!a) {
@@ -269,7 +307,7 @@ export default function Pitch3D({ sample, meta, follow, camMode }: {
             scene.add(a.root);
           }
           a.root.visible = true;
-          a.update(toX(p.x), toZ(p.y), bx, bz, dt);
+          a.update(toX(p.x), toZ(p.y), bx, bz, dt, shieldFrom && shieldFrom.id === p.id ? shieldFrom.at : null);
           a.highlighted = p.id === fid;
           seen.add(p.id);
         }

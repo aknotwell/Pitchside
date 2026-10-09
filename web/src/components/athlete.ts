@@ -14,7 +14,7 @@ import * as THREE from "three";
 
 const SCALE = 1.45; // slightly larger than life so players read on a 105 m pitch
 
-export interface Kit { shirt: string; shorts: string; socks: string; number: number; skin: string; hair: string; keeper: boolean }
+export interface Kit { shirt: string; shorts: string; socks: string; number: number; skin: string; hair: string; keeper: boolean; leftFooted?: boolean }
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
@@ -62,8 +62,12 @@ export class Athlete {
   private lean = 0;
   private bank = 0;
   private ready = false;
+  private shield = 0; // 0..1 blend into the shielding stance
+  private kickT = -1; // seconds into a kick, -1 when not kicking
+  private kickLeg: 0 | 1 = 1;
 
   constructor(kit: Kit, mats: Map<string, THREE.Material>) {
+    this.kickLeg = kit.leftFooted ? 0 : 1;
     const mat = (color: string, rough = 0.75) => {
       const key = `${color}:${rough}`;
       if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial({ color, roughness: rough }));
@@ -130,11 +134,15 @@ export class Athlete {
   }
 
   set highlighted(on: boolean) { this.ring.visible = on; }
+
+  /** Strike the ball: a backswing, the strike and a follow-through over ~0.45 s. */
+  kick() { if (this.kickT < 0 || this.kickT > 0.3) this.kickT = 0; }
   get position() { return this.pos; }
   get heading() { return this.yaw; }
+  get speed() { return this.vel.length(); }
 
-  /** x, z in metres (three.js ground plane); ball at bx, bz. */
-  update(x: number, z: number, bx: number, bz: number, dt: number) {
+  /** x, z in metres (three.js ground plane); ball at bx, bz; shieldFrom = the opponent being held off. */
+  update(x: number, z: number, bx: number, bz: number, dt: number, shieldFrom: THREE.Vector2 | null = null) {
     if (!this.ready || Math.hypot(x - this.pos.x, z - this.pos.y) > 6) {
       this.pos.set(x, z);
       this.vel.set(0, 0);
@@ -160,6 +168,11 @@ export class Athlete {
       target = toBall;
       backwards = true;
     }
+    if (shieldFrom) {  // turn the back to the opponent, ball on the far side
+      target = Math.atan2(x - shieldFrom.x, z - shieldFrom.y);
+      backwards = false;
+    }
+    this.shield = lerp(this.shield, shieldFrom ? 1 : 0, 1 - Math.exp(-d / 0.2));
     const maxTurn = (speed > 6 ? 5 : 9) * d;
     const prevYaw = this.yaw;
     this.yaw = wrap(this.yaw + clamp(wrap(target - this.yaw), -maxTurn, maxTurn));
@@ -195,12 +208,55 @@ export class Athlete {
     for (const s of [0, 1] as const) {
       const p = ph + (s === 0 ? 0 : Math.PI);
       const swing = Math.sin(p); // >0: this leg swinging forward
+      const side = s === 0 ? 1 : -1;
       this.hip[s].rotation.x = -hipAmp * swing - 0.06 * (1 - moving);
+      this.hip[s].rotation.z = 0;
       this.knee[s].rotation.x = 0.12 + kneeAmp * Math.max(0, Math.cos(p - 0.35)) + 0.12 * (1 - moving);
       this.ankle[s].rotation.x = -0.15 * moving * Math.cos(p);
       this.shoulder[s].rotation.x = armAmp * swing;
-      this.shoulder[s].rotation.z = (s === 0 ? 1 : -1) * (0.08 + 0.05 * (1 - moving));
+      this.shoulder[s].rotation.z = side * (0.08 + 0.05 * (1 - moving));
       this.elbow[s].rotation.x = -(0.25 + 1.05 * run) * (0.4 + 0.6 * moving);
+      // Shielding: sit low on a wide base, arms out to feel and hold off the opponent.
+      const sh = this.shield;
+      if (sh > 0.01) {
+        this.hip[s].rotation.x = lerp(this.hip[s].rotation.x, -0.45, sh);
+        this.hip[s].rotation.z = lerp(0, side * 0.22, sh);
+        this.knee[s].rotation.x = lerp(this.knee[s].rotation.x, 0.85, sh);
+        this.ankle[s].rotation.x = lerp(this.ankle[s].rotation.x, -0.35, sh);
+        this.shoulder[s].rotation.x = lerp(this.shoulder[s].rotation.x, 0.45, sh);
+        this.shoulder[s].rotation.z = lerp(this.shoulder[s].rotation.z, side * 1.0, sh);
+        this.elbow[s].rotation.x = lerp(this.elbow[s].rotation.x, -0.5, sh);
+      }
+    }
+    if (this.shield > 0.01) {
+      this.spine.rotation.x = lerp(this.spine.rotation.x, 0.42, this.shield);
+      this.body.position.y = lerp(this.body.position.y, -0.13, this.shield);
+      this.head.rotation.x = lerp(this.head.rotation.x, -0.3, this.shield);
+    }
+
+    // Kicking: plant, swing through the ball, follow through.
+    if (this.kickT >= 0) {
+      this.kickT += d;
+      const k = this.kickT, s = this.kickLeg, o = (1 - s) as 0 | 1;
+      if (k > 0.5) {
+        this.kickT = -1;
+      } else {
+        // wind up (leg back, knee folded) -> through the ball -> follow-through -> settle
+        let hipX: number, kneeX: number;
+        if (k < 0.18) { const a = k / 0.18; hipX = 0.75 * a; kneeX = 1.35 * a; }
+        else if (k < 0.3) { const a = (k - 0.18) / 0.12; hipX = lerp(0.75, -1.25, a); kneeX = lerp(1.35, 0.12, a); }
+        else if (k < 0.36) { hipX = -1.25; kneeX = 0.12; }
+        else { const a = (k - 0.36) / 0.14; hipX = lerp(-1.25, -0.2, a); kneeX = lerp(0.12, 0.3, a); }
+        const strike = k >= 0.18 && k < 0.36 ? 1 : 0;
+        this.hip[s].rotation.x = hipX;
+        this.knee[s].rotation.x = kneeX;
+        this.hip[o].rotation.x = -0.15;
+        this.knee[o].rotation.x = 0.35;
+        const side = s === 0 ? 1 : -1;
+        this.shoulder[o].rotation.z = -side * 0.9;  // opposite arm out for balance
+        this.shoulder[s].rotation.x = 0.5;
+        this.spine.rotation.x = 0.05 - 0.12 * strike;
+      }
     }
   }
 }
