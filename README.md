@@ -148,18 +148,54 @@ flowchart LR
 
 ## Run it
 
+### Web player on your machine (no Azure account needed)
+
+The quickest way to work on the UI. Vite serves the player from your checkout and
+forwards every `/api` call to the team's shared deployment, so live matches,
+replays, Ask and Producer all work. Needs Node 22.
+
 ```bash
-# Everything, from an empty subscription
+cd web
+npm ci
+DEV_API_PROXY=https://ca-api-bhdr37v3onmcs.thankfulglacier-9473c5b7.eastus2.azurecontainerapps.io npm run dev
+```
+
+Open <http://localhost:5173>. Changes under `web/src` reload instantly; stop the
+server with `Ctrl+C`.
+
+- **Restart it** after `git pull` or switching branch when `package.json`
+  changed (run `npm ci` first). Plain code changes reload on their own.
+- **Port 5173 in use?** Something else (often an old dev server) holds it:
+  `lsof -iTCP:5173 -sTCP:LISTEN` shows what.
+- **Remove `web/.env.local`** if you have one. A `VITE_API_URL` in it overrides
+  the proxy.
+- **Costs:** the backend is the team's subscription. Replays are close to free;
+  **Producer → Start a match** and **Ask** use compute and model tokens. Start one
+  short match, not a batch.
+
+Backend changes (Python, Functions, infra) only show up here after they are
+merged and deployed.
+
+### Tests (no Azure needed)
+
+```bash
+uv sync && uv run pytest              # simulator, interpreter, verifier, workflow, crash-resume
+cd web && npm ci && npm test          # web player: replay clock and playback, frame interpolation, live-match filter
+```
+
+### Your own deployment
+
+```bash
 azd auth login && az login
 azd up                        # provision + deploy (~20 min the first time)
 
-# Core logic, no Azure needed
-uv sync && uv run pytest      # simulator, interpreter, verifier, workflow, crash-resume
-cd web && npm ci && npm test   # web player: replay clock and playback, frame interpolation, live-match filter
-
-# Web player against your deployment
-cd web && echo "VITE_API_URL=$(azd env get-value API_URL)" > .env.local && npm i && npm run dev
+# Web player against it (its API accepts http://localhost:5173)
+cd web && echo "VITE_API_URL=$(azd env get-value API_URL)" > .env.local && npm ci && npm run dev
 ```
+
+On a subscription whose region policy blocks every Static Web Apps region
+(e.g. Azure for Students), run `azd env set DEPLOY_WEB false` first and use the
+web player locally as above.
 
 ## Repo map
 
