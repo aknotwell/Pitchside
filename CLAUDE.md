@@ -16,7 +16,7 @@ An AI pipeline that turns **synthetic** football match events into explainable m
 ## Judging criteria (20% each)
 Check new work against these. If a task doesn't clearly help at least one of them, raise it before spending time on it.
 
-1. **Technological implementation**: creative, optimised synthetic data; quality engineering (tests, CI, IaC, docs); strong use of the hero technologies: Microsoft Foundry, Microsoft Agent Framework, MCP / Azure MCP, GitHub Copilot Agent Mode, GitHub CLI/Actions, Azure App & AI Services, Azure databases, Fabric.
+1. **Technological implementation**: creative, optimised synthetic data; quality engineering (tests, CI, IaC, docs). Official wording on hero technologies: "How effectively does the Project leverage the hero technologies (Microsoft Foundry, Agent Framework, Azure MCP, GitHub Copilot Agent Mode, Fabric, GitHub SDK, GitHub CLI, Azure Apps and AI Services, Azure databases, etc.)?"
 2. **Agentic design & innovation**: real multi-agent orchestration, our own MCP server, reflection (fact-checker), planning (Producer), agent-generated scenarios, human in the loop. Agents should do genuine work, not wrap one prompt.
 3. **Real-world impact**: production-shaped (timed overlay JSON, latency and cost measured, deployable with `azd up`), meaningful for broadcasters, clubs, scouts and fans.
 4. **User experience & presentation**: polished, intuitive UI with a balance of frontend and backend; a demo video that shows the value in the first 30 seconds.
@@ -28,7 +28,7 @@ Check new work against these. If a task doesn't clearly help at least one of the
 - **Measure claims.** Back impact claims with numbers (validation report, latency, cost per match, eval scores). Don't write "realistic", "fast" or "production-ready" without evidence.
 - **Be honest about limits.** Keep known gaps and trade-offs in the docs up to date (`docs/GENERATOR.md` has the pattern). Judges trust stated limits more than hidden ones.
 - **Azure first** for cloud pieces, using the services in `docs/PLAN.md`. Every cloud dependency needs a local stand-in, so the app runs offline with `PITCHSIDE_LLM=template`.
-- **Document as you go.** New components get a short doc in `docs/` (what works, how to run, trade-offs, limits). Note when GitHub Copilot or other AI tools were used to build something; it counts for the hero-technology criterion.
+- **Document as you go.** New components get a short doc in `docs/` (what works, how to run, trade-offs, limits). Record where GitHub Copilot Agent Mode was used to build something (examples in `docs/BUILD_LOG.md`); it's a hero technology, so it counts. Other AI tools (e.g. Claude Code) aren't on the hero list.
 
 ## Engineering conventions
 - Python 3.12 via `uv` in `backend/`; React + Vite + TypeScript in `frontend/` (planned). Shared contracts live in `backend/pitchside/schemas.py`; change them deliberately and update the TS types and docs too.

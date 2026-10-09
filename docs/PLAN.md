@@ -47,7 +47,7 @@ Team: 3 people, about 2.5 weeks. Stack: Python 3.11+ (managed with `uv`) + FastA
 ### Agentic patterns used (Agentic Design, 20%)
 | Pattern | Where |
 |---|---|
-| **MCP tool use** | Our own **Pitchside MCP Server** exposes engine stats (`get_match_state`, `get_player_stats`, `get_moment_evidence`, `compare_players`). It's consumed by our agents *and* usable from GitHub Copilot or Claude Desktop, so any MCP client can query a live match |
+| **MCP tool use** | Our own **Pitchside MCP Server** exposes engine stats (`get_match_state`, `get_player_stats`, `get_moment_evidence`, `compare_players`, `get_decision_review`). It's consumed by our agents *and* usable from GitHub Copilot or Claude Desktop, so any MCP client can query a live match |
 | **Multi-agent orchestration** | Agent Framework workflow: Analyst → Producer → Persona writers (fan-out in parallel) → Fact-checker → publish |
 | **Reflection / verification** | Fact-checker sends ungrounded drafts back to the writer with the reason, up to 2 retries, then falls back to a template |
 | **Planning / resource allocation** | Producer agent manages a limited "screen-time budget" so viewers aren't spammed, prioritizing moments involving each viewer's favorite club or player |
@@ -103,6 +103,7 @@ Pydantic schemas in `backend/pitchside/schemas.py`, with TS types generated for 
 ### B. Intelligence engine + MCP server: **Person 2**
 `backend/pitchside/engine/`, `backend/pitchside/mcp/`
 - State, metrics (pass difficulty, xG, ball/shot speed, distance and sprint thresholds, PPDA, pressure index, field tilt), patterns (momentum, control vs chaos, tempo), moment detector with reasons
+- Decision Review: rebuild each on-ball decision from tracking, score the alternatives (pass completion, xT, xG, turnover cost), flag clearly better options (see "Feature: Decision Review")
 - Pitchside MCP Server wrapping the engine's read-only queries
 - Fully deterministic and unit-tested
 
@@ -116,7 +117,7 @@ Pydantic schemas in `backend/pitchside/schemas.py`, with TS types generated for 
 ### D. Front end, API, infrastructure: **shared, with everyone on it in the final week**
 `frontend/`, `backend/pitchside/api/`, `infra/`
 - FastAPI + Web PubSub groups (match × persona × language)
-- React UI: 2D pitch, overlays timed by `OverlayCue`, profile picker, **4-panel "many broadcasts" view**, **"Why?" button** on any cue that shows the agent's reasoning and MCP evidence, studio approval mode, recap screen
+- React UI: 2D pitch, overlays timed by `OverlayCue`, profile picker, **4-panel "many broadcasts" view**, **"Why?" button** on any cue that shows the agent's reasoning and MCP evidence, studio approval mode, recap screen, **Decision Review** freeze-frame with alternative-option arrows
 - Accessible (keyboard, contrast, captions) and responsive
 - Bicep + `azure.yaml`; `azd up` deploys everything; managed identity + Key Vault; Application Insights
 
@@ -128,6 +129,34 @@ Pydantic schemas in `backend/pitchside/schemas.py`, with TS types generated for 
 - Following Azure Well-Architected guidance: managed identity (no keys in code), Key Vault, health probes, scale-to-zero, structured logs and traces in App Insights, cost caps on model usage
 - Docs: `README.md` (one-command quickstart), `docs/ARCHITECTURE.md` (diagram + decisions), `docs/DATASET.md`, `docs/AGENTS.md` (each agent's role, tools and prompts), `docs/BUILD_LOG.md` (Copilot usage)
 - Every Azure dependency has a local stand-in (files, an in-process queue, template text), so the whole app runs locally with `make demo`
+
+---
+
+## Feature: Decision Review ("what else was on?")
+For any on-ball decision (pass, dribble, carry, shot, clearance), show the options the player had and whether a different one would likely have been better: "a pass to the free left-back instead of dribbling into two defenders". This is the core of **Learn mode** and feeds the **Scout** report.
+
+**How it works (numbers from code, words from agents)**
+1. **Rebuild the moment.** The engine takes the tracking frame at the event's `t`: every player's position and speed, plus the ball.
+2. **List the options.** A pass to each teammate (ground or lofted), carrying forward, taking on the nearest defender, shooting if in range.
+3. **Score each option with the engine's own models:**
+   - pass completion chance (distance, defenders near the passing lane and the receiver);
+   - expected threat (xT) gained, from a grid we learn from our own synthetic batch, so no third-party grid needs a licence;
+   - xG for shots;
+   - the cost of losing the ball where it would be lost.
+
+   Value = P(success) × gain − P(fail) × turnover cost.
+4. **Flag only clear cases.** The best alternative must beat the chosen action by a margin and be reasonably safe. Keep a few per player per half, so it reads as coaching, not nagging.
+5. **Explain.** The Analyst agent calls a new MCP tool, `get_decision_review(event_id)`. The Learn-mode writer turns the result into a coaching cue, and the Fact-checker checks every number against the tool output.
+
+**Contract:** `DecisionReview`: `event_id, player, chosen {action, p_success, value}, alternatives [{action, target, end{x,y}, p_success, xt_gain, value}], delta, reasons[]`. Add it to `schemas.py`.
+
+**UI.** Freeze the pitch at the decision. Draw the chosen action as a solid arrow and the top 2 alternatives as dashed arrows, labelled with completion % and threat gained. Add a "Decisions" list per player, which Scout mode summarises as a decision-quality score.
+
+**Measuring it.** The generator's decision layer scores its options internally (not written to the dataset). We can log those scores in a debug-only channel and measure how often the engine's best alternative agrees with the simulator's, giving a real accuracy number for the docs and demo. Keep the engine's model independent (its own features and xT grid), otherwise agreement is circular.
+
+**Stated limits.** This is hindsight with perfect information. Real players have limited vision and time, and we have no body orientation or scanning data (we approximate vision from the direction of movement). Pass weight and off-ball runs that never happened can't be judged. Wording should say "an option the data suggests", not "a mistake".
+
+**Thin slice first:** passes only, as alternatives to pass, dribble and carry events, with completion % and xT. Shots and lofted balls come after.
 
 ---
 
@@ -143,7 +172,7 @@ Pydantic schemas in `backend/pitchside/schemas.py`, with TS types generated for 
 | Tier | Contents |
 |---|---|
 | **Must** | Generator + validation report, engine + moments, MCP server, Crew workflow (Analyst, 4 writers, Fact-checker), template fallback, 3 languages, React 4-panel view with pitch + overlays, deployed on Azure, CI, README, demo video |
-| **Should** | Producer agent with screen-time budget, Scenario agent, "Why?" drill-down, Recap/Scout reports, Foundry evals in CI, studio approval mode, 5 languages |
+| **Should** | Producer agent with screen-time budget, Scenario agent, "Why?" drill-down, Decision Review (passes-only slice), Recap/Scout reports, Foundry evals in CI, studio approval mode, 5 languages |
 | **Could** | Fabric Lakehouse + Real-Time dashboard, AI Speech voice commentary, CV auto-eventing on rendered synthetic video |
 
 ### Note: options for rendered video (CV auto-eventing, paused)
@@ -173,7 +202,7 @@ Our generator stays the source of truth for events and tracking. If we attempt t
 2. **0:30 Problem:** one-size-fits-all coverage
 3. **0:50 Data:** "make me a late comeback" → Scenario agent generates the match; show the validation report
 4. **1:20 Agents:** the Crew working live: Analyst calls MCP tools, Producer chooses, Fact-checker rejects a made-up stat and the writer fixes it
-5. **1:50 UX:** Learn mode coaching cue, the "Why?" drill-down, scout report at full time
+5. **1:50 UX:** Learn mode coaching cue with a Decision Review freeze-frame ("the pass that was on"), the "Why?" drill-down, scout report at full time
 6. **2:20 Production:** architecture diagram, `azd up`, eval scores, latency and cost per match, GitHub Actions
 7. **2:45 Impact:** who it's for, and close
 
@@ -193,7 +222,7 @@ Our generator stays the source of truth for events and tracking. If we attempt t
 |---|---|
 | (i-a) Ingest synthetic events live | Generator → Event Hubs → engine |
 | (i-b) Interpret into stats and patterns | Intelligence engine |
-| (i-c) Explain why moments matter | Analyst agent + moment reasons + "Why?" drill-down |
+| (i-c) Explain why moments matter | Analyst agent + moment reasons + "Why?" drill-down + Decision Review (why a choice mattered, and what else was on) |
 | (i-d) Render on screen alongside the match | `OverlayCue` JSON + React overlays |
 | (i-e) Personalize (modes, club, player, player focus) | Personas, `ViewerProfile`, Producer agent, Scout mode |
 | (ii) Player ID tags, speed/distance thresholds | Engine threshold triggers → tag/badge cues |
