@@ -67,3 +67,36 @@ def test_frames_follow_the_tracking_schema(played):
 
 def test_frame_is_none_before_kickoff():
     assert LiveFeed(new_sim()).frame() is None
+
+
+def test_server_streams_meta_then_frames():
+    from fastapi.testclient import TestClient
+
+    from pitchside.live.server import app
+
+    with TestClient(app) as client, client.websocket_connect("/ws/match?seed=3&speed=20") as ws:
+        first = ws.receive_json()
+        assert first["type"] == "meta"
+        assert first["meta"]["final_score"] is None
+        assert first["meta"]["home"]["id"] == "ashenford"
+        frames = [ws.receive_json() for _ in range(5)]
+    assert all(f["type"] == "frame" for f in frames)
+    assert frames[-1]["frame"]["t"] > frames[0]["frame"]["t"]
+    TrackingFrame.model_validate(frames[-1]["frame"])
+
+
+@pytest.mark.parametrize(
+    "query", ["home=nowhere", "home=greywater", "scenario=../secret.json", "speed=500"]
+)
+def test_server_rejects_bad_options(query):
+    from fastapi.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+
+    from pitchside.live.server import app
+
+    with (
+        TestClient(app) as client,
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect(f"/ws/match?{query}") as ws,
+    ):
+        ws.receive_json()

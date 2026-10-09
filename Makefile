@@ -2,7 +2,7 @@ SEED ?= 42
 HOME_CLUB ?= ashenford
 AWAY_CLUB ?= greywater
 
-.PHONY: setup gen batch tune test lint fmt
+.PHONY: setup gen batch tune live test lint fmt
 
 setup:
 	cd backend && uv sync
@@ -16,6 +16,10 @@ batch:
 # Try tuning constants without editing code, e.g. make tune ARGS="SHOT_BIAS=-0.03"
 tune:
 	cd backend && uv run python scripts/tune.py $(ARGS)
+
+# Stream live matches over WebSocket at ws://127.0.0.1:8000/ws/match
+live:
+	cd backend && uv run pitchside-live
 
 test:
 	cd backend && uv run pytest -q
