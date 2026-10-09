@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import pickle
+import signal
 import time
 
 from opentelemetry import trace
@@ -68,11 +69,29 @@ class InterpreterService:
                                     credential=self.cred)
         consumer = EventHubConsumerClient(fully_qualified_namespace=s.eventhub_fqdn, eventhub_name=s.eventhub_name,
                                           consumer_group=s.eventhub_consumer_group, credential=self.cred,
-                                          checkpoint_store=store)
+                                          checkpoint_store=store, load_balancing_interval=5,
+                                          partition_ownership_expiration_interval=20)
         log.info("interpreter consuming %s/%s as %s", s.eventhub_fqdn, s.eventhub_name, s.eventhub_consumer_group)
+        loop = asyncio.get_running_loop()
+        # Scale-in and redeploys send SIGTERM: close the consumer so partition ownership is released
+        # immediately instead of waiting for it to expire.
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, lambda: asyncio.ensure_future(consumer.close()))
         async with consumer, self.sender:
-            await consumer.receive_batch(on_event_batch=self.on_batch, max_batch_size=400, max_wait_time=0.5,
-                                         starting_position="-1")
+            await consumer.receive_batch(
+                on_event_batch=self.on_batch, on_error=self.on_error,
+                on_partition_initialize=self.on_partition_initialize, on_partition_close=self.on_partition_close,
+                max_batch_size=400, max_wait_time=0.5, starting_position="-1")
+
+    async def on_error(self, partition_context, error) -> None:
+        pid = getattr(partition_context, "partition_id", None)
+        log.warning("event hub error (partition %s): %s: %s", pid, type(error).__name__, error)
+
+    async def on_partition_initialize(self, partition_context) -> None:
+        log.info("claimed partition %s", partition_context.partition_id)
+
+    async def on_partition_close(self, partition_context, reason) -> None:
+        log.info("released partition %s (%s)", partition_context.partition_id, reason)
 
     # ------------------------------------------------------------ snapshots
     def _snapshot_name(self, match_id: str) -> str:
@@ -94,6 +113,14 @@ class InterpreterService:
 
     # ------------------------------------------------------------ processing
     async def on_batch(self, partition_context, events) -> None:
+        """Never let an exception escape: the SDK would stop this partition's receive loop while
+        the load balancer keeps renewing its ownership, silently stalling the partition."""
+        try:
+            await self._on_batch(partition_context, events)
+        except Exception:
+            log.exception("batch failed on partition %s; will retry on the next batch", partition_context.partition_id)
+
+    async def _on_batch(self, partition_context, events) -> None:
         if not events:
             return
         pid = partition_context.partition_id
