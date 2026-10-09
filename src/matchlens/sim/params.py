@@ -81,9 +81,11 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "steer_gain": 1.1,
     "run_prob_per_s": 0.06,
     "run_s": [1.8, 3.5],  # how long a run in behind lasts
+    "run_depth_m": [5.0, 13.0],  # how far beyond the defensive line a run in behind aims
     "drift_m": 3.0,  # off-ball positional wander (Ornstein-Uhlenbeck amplitude, metres)
     "drift_tau_s": 15.0,
     "jog_max_mps": 5.0,
+    "hard_run_mps": 99.0,  # cap on non-sprint hurrying (pressing, chasing); 99 = no cap
     "urgent_min_gap_m": 3.0,
     # Team strength and scripted stories
     "strength_sd": 0.03,
