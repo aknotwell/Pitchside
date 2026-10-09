@@ -30,6 +30,8 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
   const shownAt = useRef<Map<string, number>>(new Map());
   const finalRef = useRef<MatchState | null>(finalState);
   finalRef.current = finalState;  // read inside the loop; changing it must not restart playback
+  const view = useRef({ persona, lang });
+  view.current = { persona, lang };  // same: switching viewer or language carries on from the current moment
   const frames = useRef<Frame[]>([]);
   const sampler = useRef<() => Frame | null>(() => null);
   const sample = useRef(() => sampler.current()).current;
@@ -105,10 +107,13 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
         : { id: p.matchId, clockS: playhead, displayClock: clock, period, ended: false, home: team(p.meta, "home", h), away: team(p.meta, "away", aw),
             possessionHome: 0.5, momentum: 0, controlChaos: 0, topSpeeds: [], meta: p.meta };
       const active: Cue[] = [], history: Cue[] = [];
+      const { persona, lang } = view.current;
       for (const c of p.cues) {
-        if (!(c.persona === persona || c.persona === "all") || !(c.lang === lang || c.lang === "all")) continue;
         if (c.display_at_s > playhead) continue;
+        // Stamp every viewer/language variant as it airs, so after a switch the new view's copy of a
+        // moment keeps its real air time: what is up stays up, and nothing already gone comes back.
         if (!shownAt.current.has(c.id)) shownAt.current.set(c.id, now);
+        if (!(c.persona === persona || c.persona === "all") || !(c.lang === lang || c.lang === "all")) continue;
         history.push(c);
         if (now - (shownAt.current.get(c.id) ?? 0) < c.ttl_s) active.push(c);
       }
@@ -118,7 +123,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
     };
     raf = requestAnimationFrame(tick);
     return () => { stopped = true; cancelAnimationFrame(raf); sampler.current = () => null; };
-  }, [matchId, persona, lang]);
+  }, [matchId]);
 
   return live;
 }
