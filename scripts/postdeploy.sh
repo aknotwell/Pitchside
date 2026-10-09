@@ -9,3 +9,11 @@ case "$IMAGE" in
 esac
 echo "simulator job $SIM_JOB_NAME -> $IMAGE"
 az containerapp job update -g "$RG" -n "$SIM_JOB_NAME" --image "$IMAGE" -o none
+
+# The MCP extension key lives in Key Vault; the api reads it with its managed identity.
+if [ -n "${KEYVAULT_NAME:-}" ] && [ -n "${FUNCTIONS_APP_NAME:-}" ]; then
+  KEY=$(az functionapp keys list -g "$RG" -n "$FUNCTIONS_APP_NAME" --query "systemKeys.mcp_extension" -o tsv 2>/dev/null || true)
+  if [ -n "$KEY" ]; then
+    az keyvault secret set --vault-name "$KEYVAULT_NAME" --name mcp-key --value "$KEY" -o none && echo "mcp-key stored in $KEYVAULT_NAME"
+  fi
+fi

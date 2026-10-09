@@ -70,3 +70,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; pa
 .runs { width: 100%; font-size: 12px; border-collapse: collapse; } .runs td, .runs th { padding: 3px; text-align: left; border-bottom: 1px solid var(--line); }
 .src-agent { color: #b8a6ff; } .src-fallback { color: var(--warn); }
 footer { padding: 10px 16px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+.ask .row { display: flex; gap: 6px; } .ask input { flex: 1; font: inherit; color: inherit; background: #1b2633; border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; } .chips button { font-size: 12px; }
+.answers { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.answers li { border: 1px solid var(--line); border-radius: 6px; padding: 8px; font-size: 13px; } .answers p { margin: 4px 0; }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import { Overlay } from "./components/Overlay";
 import { Pitch } from "./components/Pitch";
+import { Ask } from "./components/Ask";
 import { Producer } from "./components/Producer";
 import { Scoreboard } from "./components/Scoreboard";
 import { Stats } from "./components/Stats";
@@ -18,7 +19,7 @@ export default function App() {
   const [persona, setPersona] = useState<Persona>((params.get("persona") as Persona) || "casual");
   const [lang, setLang] = useState<Lang>((params.get("lang") as Lang) || "en");
   const [why, setWhy] = useState<Cue | null>(null);
-  const [tab, setTab] = useState<"stats" | "feed" | "producer">("stats");
+  const [tab, setTab] = useState<"stats" | "feed" | "ask" | "producer">("stats");
   const live = useLiveMatch(matchId, persona, lang);
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function App() {
         </section>
         <aside className="side">
           <nav className="tabs">
-            {(["stats", "feed", "producer"] as const).map((t) => (
+            {(["stats", "feed", "ask", "producer"] as const).map((t) => (
               <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "feed" ? "Moments" : t[0].toUpperCase() + t.slice(1)}</button>
             ))}
           </nav>
@@ -80,6 +81,7 @@ export default function App() {
               {live.history.length === 0 && <li className="muted">Moments appear here as the match unfolds.</li>}
             </ul>
           )}
+          {tab === "ask" && <Ask matchId={matchId} lang={lang} />}
           {tab === "producer" && <Producer />}
         </aside>
       </main>

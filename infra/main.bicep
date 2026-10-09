@@ -176,6 +176,19 @@ module registry 'modules/registry.bicep' = {
   }
 }
 
+module keyvault 'modules/keyvault.bicep' = {
+  name: 'keyvault'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    name: 'kv-${resourceToken}'
+    roles: concat(
+      [ { principalId: ids.api.principalId, roleId: '4633458b-17de-408a-b874-0445c86b69e6', principalType: svc } ],
+      hasUser ? [ { principalId: principalId, roleId: 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7', principalType: principalType } ] : [])
+  }
+}
+
 module web 'modules/web.bicep' = {
   name: 'web'
   scope: rg
@@ -200,6 +213,9 @@ var commonEnv = [
   { name: 'AZURE_SUBSCRIPTION_ID', value: subscription().subscriptionId }
   { name: 'AZURE_RESOURCE_GROUP', value: rg.name }
   { name: 'SIM_JOB_NAME', value: 'job-sim-${resourceToken}' }
+  { name: 'KEYVAULT_URI', value: keyvault.outputs.uri }
+  { name: 'MCP_URL', value: 'https://func-cues-${resourceToken}.azurewebsites.net/runtime/webhooks/mcp' }
+  { name: 'ASK_DEPLOYMENT', value: 'gpt-4.1-mini' }
 ]
 
 module aca 'modules/aca.bicep' = {
@@ -277,3 +293,4 @@ output WEB_URL string = 'https://${web.outputs.hostname}'
 output SIM_JOB_NAME string = aca.outputs.simulatorJobName
 output INTERPRETER_APP_NAME string = aca.outputs.interpreterName
 output FUNCTIONS_APP_NAME string = functions.outputs.name
+output KEYVAULT_NAME string = keyvault.outputs.name

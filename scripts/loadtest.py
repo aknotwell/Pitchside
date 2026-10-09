@@ -117,7 +117,10 @@ def main() -> None:
     async def run():
         await asyncio.sleep(25)  # let the jobs start
         watchers = [watch(api, mid, t0 + duration, cues) for mid in match_ids[: a.watch]]
-        await asyncio.gather(sampler(), *watchers, return_exceptions=True)
+        results = await asyncio.gather(sampler(), *watchers, return_exceptions=True)
+        for r in results:
+            if isinstance(r, Exception):
+                print(f"  task failed: {type(r).__name__}: {r}")
 
     asyncio.run(asyncio.wait_for(run(), timeout=duration + 120))
 

@@ -20,6 +20,11 @@ export const api = {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ speed, periodMin }),
     }),
+  ask: (matchId: string, question: string, lang: Lang) =>
+    j<{ answer: string; tools: string[]; model: string }>("/api/ask", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ matchId, question, lang }),
+    }),
   chaos: () => j<{ armed: boolean }>("/api/chaos", { method: "POST" }),
   ops: () => j<{ chaos: { armed: boolean; lastFiredAt?: number }; runs: Record<string, unknown>[] }>("/api/ops"),
 };

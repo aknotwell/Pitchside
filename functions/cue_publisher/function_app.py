@@ -26,7 +26,8 @@ def client() -> WebPubSubServiceClient:
 
 @app.function_name("cue_publisher")
 @app.cosmos_db_trigger(arg_name="docs", connection="CosmosDb", database_name="matchlens", container_name="cues",
-                       lease_container_name="leases", create_lease_container_if_not_exists=False)
+                       lease_container_name="leases", create_lease_container_if_not_exists=False,
+                       feed_poll_delay=250, max_items_per_invocation=100)
 def cue_publisher(docs: func.DocumentList) -> None:
     sent = 0
     for d in docs:

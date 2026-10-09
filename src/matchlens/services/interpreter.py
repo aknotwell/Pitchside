@@ -61,7 +61,7 @@ class InterpreterService:
                                           checkpoint_store=store)
         log.info("interpreter consuming %s/%s as %s", s.eventhub_fqdn, s.eventhub_name, s.eventhub_consumer_group)
         async with consumer, self.sender:
-            await consumer.receive_batch(on_event_batch=self.on_batch, max_batch_size=400, max_wait_time=2.0,
+            await consumer.receive_batch(on_event_batch=self.on_batch, max_batch_size=400, max_wait_time=0.5,
                                          starting_position="-1")
 
     # ------------------------------------------------------------ snapshots

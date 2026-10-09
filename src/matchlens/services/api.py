@@ -39,6 +39,8 @@ class RateLimiter:
 
 
 reads = RateLimiter(240, 60)
+asks = RateLimiter(6, 60)
+global_asks = RateLimiter(300, 3600)  # token budget guard for the judging window
 starts = RateLimiter(3, 3600)
 global_starts = RateLimiter(12, 3600)
 
@@ -56,6 +58,7 @@ async def lifespan(app: FastAPI):
     app.state.db = {n: db.get_container_client(n) for n in ("matchState", "cues", "moments", "runs")}
     app.state.wps = WebPubSubServiceClient(endpoint=s.webpubsub_endpoint, hub=s.webpubsub_hub, credential=app.state.cred)
     app.state.http = aiohttp.ClientSession()
+    app.state.ask = None
     yield
     await app.state.http.close()
     await app.state.cosmos.close()
@@ -176,6 +179,42 @@ async def start_match(request: Request):
             raise HTTPException(502, f"job start failed: {r.status} {await r.text()}")
         res = await r.json() if r.content_type == "application/json" else {}
     return {"started": True, "execution": res.get("name"), "seed": seed, "speed": speed, "periodMin": period_min}
+
+
+async def get_asker(request: Request):
+    if request.app.state.ask is not None:
+        return request.app.state.ask
+    from azure.keyvault.secrets.aio import SecretClient
+
+    from matchlens.story.ask import AskTheMatch
+
+    s = settings()
+    async with SecretClient(os.environ["KEYVAULT_URI"], credential=request.app.state.cred) as kv:
+        key = (await kv.get_secret("mcp-key")).value
+    request.app.state.ask = AskTheMatch(s.foundry_project_endpoint, os.environ.get("ASK_DEPLOYMENT", "gpt-4.1-mini"),
+                                        request.app.state.cred, os.environ["MCP_URL"], key)
+    return request.app.state.ask
+
+
+@app.post("/api/ask")
+async def ask(request: Request):
+    """Ask the match: an Agent Framework agent answering through the match-data MCP server."""
+    if not asks.check(client_key(request)) or not global_asks.check("all"):
+        raise HTTPException(429, "question limit reached, try again in a minute")
+    body = await request.json()
+    question = str(body.get("question", "")).strip()
+    match_id = str(body.get("matchId", "")).strip()
+    lang = body.get("lang", "en") if body.get("lang") in LANGUAGES else "en"
+    if not question or not match_id or len(question) > 300:
+        raise HTTPException(400, "matchId and a question (max 300 characters) are required")
+    try:
+        asker = await get_asker(request)
+        return await asker.ask(match_id, question, lang)
+    except TimeoutError as exc:
+        raise HTTPException(504, "the agent took too long") from exc
+    except Exception as exc:
+        log.warning("ask failed: %s", exc)
+        raise HTTPException(502, "the agent is unavailable right now") from exc
 
 
 @app.post("/api/chaos")
