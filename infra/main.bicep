@@ -24,6 +24,9 @@ param demoMode bool = false
 @description('Email for operational alerts (optional).')
 param alertEmail string = ''
 
+@description('Deploy the Static Web App. Turn off where policy blocks every SWA region (e.g. Azure for Students); run the web player locally instead.')
+param deployWeb bool = true
+
 param apiExists bool = false
 param interpreterExists bool = false
 param storytellerExists bool = false
@@ -219,7 +222,7 @@ module chaos 'modules/chaos.bicep' = {
   }
 }
 
-module web 'modules/web.bicep' = {
+module web 'modules/web.bicep' = if (deployWeb) {
   name: 'web'
   scope: rg
   params: { location: location, tags: tags, name: 'swa-${resourceToken}' }
@@ -269,7 +272,7 @@ module aca 'modules/aca.bicep' = {
     eventHubsName: messaging.outputs.eventHubsName
     serviceBusName: messaging.outputs.serviceBusName
     storageName: data.outputs.storageName
-    corsOrigins: [ 'https://${web.outputs.hostname}', 'http://localhost:5173' ]
+    corsOrigins: deployWeb ? [ 'https://${web!.outputs.hostname}', 'http://localhost:5173' ] : [ 'http://localhost:5173' ]
     demoMode: demoMode
   }
 }
@@ -324,7 +327,7 @@ output COSMOS_ENDPOINT string = data.outputs.cosmosEndpoint
 output WEBPUBSUB_ENDPOINT string = realtime.outputs.endpoint
 output FOUNDRY_PROJECT_ENDPOINT string = foundry.outputs.projectEndpoint
 output API_URL string = 'https://${aca.outputs.apiFqdn}'
-output WEB_URL string = 'https://${web.outputs.hostname}'
+output WEB_URL string = deployWeb ? 'https://${web!.outputs.hostname}' : 'http://localhost:5173'
 output SIM_JOB_NAME string = aca.outputs.simulatorJobName
 output INTERPRETER_APP_NAME string = aca.outputs.interpreterName
 output FUNCTIONS_APP_NAME string = functions.outputs.name

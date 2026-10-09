@@ -10,6 +10,7 @@
     "webPubSubSku": { "value": "${WEBPUBSUB_SKU=Free_F1}" },
     "demoMode": { "value": "${DEMO_MODE=false}" },
     "alertEmail": { "value": "${ALERT_EMAIL=}" },
+    "deployWeb": { "value": "${DEPLOY_WEB=true}" },
     "apiExists": { "value": "${SERVICE_API_RESOURCE_EXISTS=false}" },
     "interpreterExists": { "value": "${SERVICE_INTERPRETER_RESOURCE_EXISTS=false}" },
     "storytellerExists": { "value": "${SERVICE_STORYTELLER_RESOURCE_EXISTS=false}" }
