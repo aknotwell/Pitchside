@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.azure/
+.env
+node_modules/
+dist/
+data/raw/
+*.log
+.python_packages/
+local.settings.json

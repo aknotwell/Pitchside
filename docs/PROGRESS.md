@@ -53,3 +53,57 @@ request, and free trials may not be able to file one.
    If it's blocked on the free trial, upgrade to pay-as-you-go (plan was by
    Oct 20 at the latest) and file it again.
 2. Register every teammate before Oct 20, 12:00 PT.
+
+## Checkpoint 2: core logic, tested locally (2026-10-08)
+
+The product core runs and is tested without Azure: `uv run pytest`, 17 tests.
+
+- **`matchlens.contracts`**: versioned Pydantic contracts for `MatchMetadata`,
+  `MatchEvent`, `TrackingBatch`, `StreamMessage`, `Moment`, `EvidenceItem` and
+  `OverlayCue`, plus the Web PubSub group names.
+- **`matchlens.world`**: a fictional league of 8 clubs with seeded squads.
+  Nothing real.
+- **`matchlens.sim`**: a deterministic event engine plus 10 Hz tracking for 22
+  players and the ball.
+  - Event types: passes, carries, pressures, duels, tackles, fouls, cards,
+    interceptions/recoveries, shots with xG and shot speed, saves, corners,
+    throw-ins and subs.
+  - Scripted stories: the away team presses high from 55′ to 72′.
+  - Parameters are content-addressed (`params_version`).
+  - Rough sanity check from six seeds:
+
+    | Metric | Simulated | Real (approx.) |
+    |---|---|---|
+    | Passes per match | ~900–1,000 | ~950 |
+    | Pass accuracy | 75–81% | ~80% |
+    | Shots | 16–25 | ~25 |
+    | Distance per outfield starter | 8.5–9.5 km | ~10–11 km |
+    | Top speed | 8.6–9.5 m/s | — |
+
+    Calibration against the licensed datasets is still to do; that's the
+    `calibrate` job.
+- **`matchlens.interpret`**: incremental, deterministic and idempotent.
+  Duplicates are ignored, and a replay gives identical state.
+  - Metrics: score, xG, shots, pass accuracy, final-third and box entries,
+    possession, PPDA (whole match and rolling), turnovers, a momentum EWMA, a
+    control-vs-chaos index, and distance/top speed/sprints from tracking.
+  - **Template cues (hot path, no LLM):** goal, shot, card, substitution,
+    top-speed player tag.
+  - **Moments (warm/cold path):** goal, big chance, momentum swing, pressing
+    surge, half time and full time. Each carries an evidence pack.
+- **`matchlens.story`**: the storyteller as a **Microsoft Agent Framework 1.21
+  workflow**: Editor → Explainer → Verifier → (retry ×1 | template fallback) →
+  Director.
+  - It makes one structured LLM call for all six persona × language variants
+    (analyst/casual × en/es/ja).
+  - The code verifier checks numbers, names, evidence keys, length and betting
+    language.
+  - The overlay budget allows at most one non-essential explanation per 75 s.
+  - `FoundryExplainer` has a deployment fallback chain and a timeout.
+  - **The checkpoint-resume test passes**: a workflow killed in the Director
+    resumes on a new instance without calling the model again. That is the
+    chaos-drill story.
+
+Design change: one Event Hub, **`match-stream`**, carries events and tracking
+for a match, keyed by `match_id`. A match then stays ordered on one consumer;
+separate hubs could split a match across replicas.
