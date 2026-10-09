@@ -830,7 +830,9 @@ class MatchEngine:
             pint = 1.0 / (1.0 + np.exp(-np.clip(3.0 * margin, -30, 30)))
             pint[lofted, :-1, :] = 0.0  # in the air until it lands
             lane = 1.0 - np.prod(1.0 - 0.55 * pint.max(axis=1), axis=1)
-            space = np.linalg.norm(T_[:, None, :] - o_att[None, :, :], axis=2).min(axis=1)
+            # Space at the receiver when the ball gets there: defenders keep closing while it travels.
+            gap = np.linalg.norm(T_[:, None, :] - o_att[None, :, :], axis=2) - p["close_while_travel"] * o_v[None, :] * dur[:, None]
+            space = gap.min(axis=1)
             ctrl = 0.35 / (1.0 + np.exp(space - 2.0)) + 0.15 * lofted
             p_exec = (p["pass_base"] - p["pass_len_penalty_per_m"] * L - p["pass_pressure_penalty"] * pr
                       - 0.06 * lofted) * (0.82 + 0.3 * passing) * st.strength
@@ -847,6 +849,7 @@ class MatchEngine:
                       + 0.0012 * sty["directness"] * max(0.0, gain) * (1 if L[n] > 25 else 0.5)
                       + 0.012 * (1 - sty["directness"]) * p_succ[n]
                       + (0.006 * flair if kind == "through" else 0.0))
+                u_ -= p["long_pass_cost"] * max(0.0, L[n] - 25.0) / 10.0 * (1.3 - vision)  # long balls: harder, slower, riskier
                 u_ += rng.normal(0, 0.006 * (1.4 - vision))  # imperfect reading of the picture
                 utils.append(float(u_))
                 k_ = "cross" if cross[n] else ("through" if kind == "through" else
@@ -861,7 +864,8 @@ class MatchEngine:
             tgt = np.array([b[0] + rng.uniform(30, 50), side * rng.uniform(12, 33)])
             mates = [j for j in st.on if j != i]
             j = mates[int(np.argmin(_dist(self.pos[mates] * s, tgt)))]
-            utils.append(p["clear_value"] * (0.4 + pr) * (1.3 - 0.6 * tr["composure"][i]))
+            # Safety first, but it usually hands the ball back: only worth it when nothing sensible is on.
+            utils.append(p["clear_value"] * (0.4 + pr) * (1.3 - 0.6 * tr["composure"][i]) - p["clear_cost"])
             acts.append(("pass", j, tgt, True, 22.0, "clearance", 0.5, pr))
 
         # --- carries: forward, diagonals, or shield
@@ -1339,7 +1343,7 @@ class MatchEngine:
                 else:
                     late = t > f.t1 - 0.3 or float(np.linalg.norm(self.ball[:2] - self.pos[f.receiver])) < 4.0
                 tgt[f.receiver] = self.ball[:2] + self.bv[:2] * 0.35 if late else f.end
-                urgent[f.receiver] = 0.9
+                urgent[f.receiver] = p["receive_effort"]
         elif self.state == LOOSE:
             act = self._active()
             d = _dist(self.pos[act], b)
@@ -1348,7 +1352,7 @@ class MatchEngine:
                 mask = np.array([self.tid_of[i] == tid and not self.is_gk[i] for i in act])
                 idx = act[mask][np.argsort(d[mask])[:2]]
                 tgt[idx] = lead
-                urgent[idx] = 0.9
+                urgent[idx] = p["receive_effort"]
         elif self.state == DEAD and self.restart is not None:
             r = self.restart
             tgt[r.taker] = r.spot - np.array([SIGN[r.team] * 0.5, 0.0])
@@ -1370,7 +1374,7 @@ class MatchEngine:
         o_att = self.pos[Opp] * s
         cand = []
         for ang in (0.6, -0.6, 1.4, -1.4, 2.4, -2.4, 0.0):
-            r = self.rng.uniform(9, 14)
+            r = self.rng.uniform(*self.p["support_m"])
             pt = b + np.array([math.cos(ang), math.sin(ang)]) * r
             if abs(pt[0]) > HALF_LENGTH - 2 or abs(pt[1]) > HALF_WIDTH - 2 or pt[0] < -46:
                 continue

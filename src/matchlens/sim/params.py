@@ -37,6 +37,11 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "pass_pressure_penalty": 0.12,
     "pass_error_m": 1.2,
     "clear_value": 0.012,
+    "clear_cost": 0.0,  # possession usually lost with a clearance
+    "long_pass_cost": 0.0,  # utility cost per 10 m beyond 25 m (scaled down for players with vision)
+    "close_while_travel": 0.3,  # share of a defender's top speed spent closing the receiver while a pass travels
+    "support_m": [6.0, 12.0],  # how far supporting teammates show for the ball
+    "receive_effort": 0.85,  # share of top speed when running onto a pass or a loose ball
     "pass_max_len_m": [22.0, 62.0],  # by vision, low -> high
     "intercept_reach_m": 1.1,
     "intercept_prob": 0.35,  # per 0.1 s step with the ball within reach

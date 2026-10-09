@@ -510,3 +510,36 @@ the keeper, there was no shielding, there were too few good shots, and long ball
   | First-time passes back to the keeper | about 2 per match | |
 
   Remaining gaps are in `docs/REALISM.md`.
+
+## Checkpoint 11: passing realism (2026-10-09)
+
+After checkpoint 10, passes were about 30% too long, completion was about 4 points high, and
+sprints were about a third over. The causes were too many clearances and floated switches,
+and supporting players standing too far away.
+
+- **A long pass has a cost.** Each 10 m beyond 25 m costs utility (less for players with
+  vision). Defenders also keep closing the receiver while the ball travels.
+- **A clearance has a cost.** It usually gives the ball back, so players only clear when
+  nothing sensible is on.
+- **Shorter support:** supporting players show 6–12 m away (was 9–14 m), so short
+  passes appear.
+- **Ambition and errors:** players take more ambitious options with less fear of losing the
+  ball. Defenders cover more of the passing lane, and first touches miscontrol a little
+  more often.
+- **Effort:** receivers and loose-ball chasers run at 85% of top speed, not 90%.
+- **Fit and checks:** re-fitted, then hand-tuned on 64 unseen matches.
+
+| Measure | Now | Real or typical |
+|---|---|---|
+| Passes per match | 910 (+13%) | 804 |
+| Pass completion | 82.5% | 83.4% |
+| Mean pass length | 18.3 m (+12%) | 16.3 m |
+| Shots per match | 23–26 | 26 |
+| Goals per match | 3.0–3.2 | 2.8 |
+| Sprints per 90 | 8.5 | 8.5 |
+| Distance per 90 | 10.4 km | 10.3 km |
+| Fouls per match | 23 | 23 |
+| Yellow cards per match | 3.3 | 3.8 |
+| Clearances per match | 46 | 40 |
+| Headers, share of shots | 12% | 17% |
+| Shots from outside the box | 42% | 38% |
