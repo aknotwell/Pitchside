@@ -38,7 +38,8 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "pass_error_m": 1.2,
     "clear_value": 0.012,
     "clear_cost": 0.0,  # possession usually lost with a clearance
-    "long_pass_cost": 0.0,  # utility cost per 10 m beyond 25 m (scaled down for players with vision)
+    "long_pass_cost": 0.0,
+    "cross_bias": 0.0,  # extra pull towards crossing, scaled by the crosser's crossing trait  # utility cost per 10 m beyond 25 m (scaled down for players with vision)
     "close_while_travel": 0.3,  # share of a defender's top speed spent closing the receiver while a pass travels
     "support_m": [6.0, 12.0],  # how far supporting teammates show for the ball
     "receive_effort": 0.85,  # share of top speed when running onto a pass or a loose ball
