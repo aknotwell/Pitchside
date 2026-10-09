@@ -149,7 +149,7 @@ function Main({ params }: { params: URLSearchParams }) {
               <Pitch3D sample={live.sample} meta={live.state?.meta} follow={follow} camMode={cam} paused={paused} />
             </Suspense>
           ) : (
-            <Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} follow={follow} />
+            <Pitch frame={live.frame} sample={live.sample} meta={live.state?.meta} cues={live.cues} follow={follow} />
           )}
           <div className="viewbar">
             <div className="seg" role="group" aria-label="Pitch view">
