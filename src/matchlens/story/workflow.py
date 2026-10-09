@@ -201,7 +201,7 @@ class Director(Executor):
                 title=v.title,
                 text=v.text,
                 data={"kind": m.kind, "team": m.team_id, "headline": m.headline, "score": m.score,
-                      "model": ok.model, "fallbackReason": ok.reason or None},
+                      "model": ok.model, "fallbackReason": ok.reason or None, "enqueuedAtMs": m.enqueued_at_ms},
                 evidence={"event_ids": m.event_ids, "metrics": [e.model_dump() for e in used]},
                 verified=True,
                 source="agent" if ok.source == "agent" else "fallback",

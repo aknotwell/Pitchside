@@ -101,6 +101,12 @@ class InterpreterService:
                     self.matches[msg.match_id] = it
                     self.match_partition[msg.match_id] = pid
                 out = it.handle(msg)
+                if out.cues or out.moments:
+                    enq = ed.enqueued_time.timestamp() * 1000 if ed.enqueued_time else None
+                    for cue in out.cues:
+                        cue.data["enqueuedAtMs"] = enq  # for event -> screen latency
+                    for m in out.moments:
+                        m.enqueued_at_ms = enq
                 outputs.append((it, out))
             await self._emit(outputs)
             now = time.monotonic()

@@ -21,6 +21,9 @@ param webPubSubSku string = 'Free_F1'
 @description('Demo/judging mode: min 1 replica everywhere and always-ready Functions (no cold starts).')
 param demoMode bool = false
 
+@description('Email for operational alerts (optional).')
+param alertEmail string = ''
+
 param apiExists bool = false
 param interpreterExists bool = false
 param storytellerExists bool = false
@@ -237,6 +240,21 @@ module functions 'modules/functions.bicep' = {
     cosmosEndpoint: data.outputs.cosmosEndpoint
     webPubSubEndpoint: realtime.outputs.endpoint
     alwaysReady: demoMode ? 1 : 0
+  }
+}
+
+module ops 'modules/ops.bicep' = {
+  name: 'ops'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    resourceToken: resourceToken
+    appInsightsId: monitoring.outputs.appInsightsId
+    apiUrl: 'https://${aca.outputs.apiFqdn}'
+    simulatorJobId: aca.outputs.simulatorJobId
+    alertEmail: alertEmail
+    keepLive: demoMode
   }
 }
 

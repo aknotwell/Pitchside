@@ -161,6 +161,7 @@ class Moment(BaseModel):
     event_ids: list[str] = Field(default_factory=list)
     score: dict[str, int] = Field(default_factory=dict)
     trace_id: str | None = None
+    enqueued_at_ms: float | None = Field(default=None, description="Event Hubs enqueue time of the triggering event")
 
 
 class CueEvidence(BaseModel):

@@ -1,0 +1,37 @@
+// MatchLens SLO queries (Log Analytics workspace behind Application Insights)
+
+// 1. Throughput per service, last hour
+union AppRequests, AppDependencies
+| where TimeGenerated > ago(1h)
+| summarize calls = count() by AppRoleName, bin(TimeGenerated, 1m)
+| render timechart;
+
+// 2. Storyteller: workflow outcome and latency per moment kind (from the structured log line)
+AppTraces
+| where AppRoleName == "storyteller" and Message has "cues via"
+| parse Message with "moment " moment " (" kind "): " cues:int " cues via " source " in " ms:long " ms" rest
+| summarize moments = count(), p50_ms = percentile(ms, 50), p95_ms = percentile(ms, 95),
+            agent = countif(source == "agent"), fallback = countif(source == "fallback"),
+            resumed = countif(rest has "resumed") by kind;
+
+// 3. Fallback rate (SLO: < 10%)
+AppTraces
+| where AppRoleName == "storyteller" and Message has "cues via"
+| summarize fallback_rate = round(100.0 * countif(Message has "via fallback") / count(), 1);
+
+// 4. Model failures by deployment
+AppTraces
+| where AppRoleName == "storyteller" and Message startswith "deployment "
+| parse Message with "deployment " deployment " failed: " error
+| summarize failures = count() by deployment, tostring(split(error, " ")[0]);
+
+// 5. Chaos drills and resumes
+AppTraces
+| where AppRoleName == "storyteller" and (Message has "CHAOS" or Message has "resuming")
+| project TimeGenerated, Message
+| order by TimeGenerated desc;
+
+// 6. Cue publisher batches (Functions)
+AppTraces
+| where AppRoleName startswith "func-cues" and Message startswith "published"
+| summarize batches = count(), cues = sum(toint(extract(@"published (\d+)", 1, Message))) by bin(TimeGenerated, 5m);

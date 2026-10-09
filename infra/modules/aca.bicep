@@ -92,7 +92,7 @@ module interpreter 'containerapp.bicep' = {
             eventHubNamespace: eventHubsName
             eventHubName: 'match-stream'
             consumerGroup: 'interpreter'
-            unprocessedEventThreshold: '200'
+            unprocessedEventThreshold: '50'
             activationUnprocessedEventThreshold: '1'
             storageAccountName: storageName
             blobContainer: 'ehcheckpoints'

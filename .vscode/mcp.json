@@ -1,0 +1,17 @@
+{
+  "inputs": [
+    { "type": "promptString", "id": "matchlens-mcp-key", "description": "MatchLens MCP key (az functionapp keys list ... --query systemKeys.mcp_extension)", "password": true }
+  ],
+  "servers": {
+    "matchlens": {
+      "type": "http",
+      "url": "https://func-cues-bhdr37v3onmcs.azurewebsites.net/runtime/webhooks/mcp",
+      "headers": { "x-functions-key": "${input:matchlens-mcp-key}" }
+    },
+    "azure": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@azure/mcp@latest", "server", "start"]
+    }
+  }
+}
