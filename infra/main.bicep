@@ -208,6 +208,17 @@ module lifecycle 'modules/lifecycle.bicep' = {
   }
 }
 
+module chaos 'modules/chaos.bicep' = {
+  name: 'chaos'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    resourceToken: resourceToken
+    eventHubsName: messaging.outputs.eventHubsName
+  }
+}
+
 module web 'modules/web.bicep' = {
   name: 'web'
   scope: rg
@@ -319,3 +330,4 @@ output INTERPRETER_APP_NAME string = aca.outputs.interpreterName
 output FUNCTIONS_APP_NAME string = functions.outputs.name
 output KEYVAULT_NAME string = keyvault.outputs.name
 output REPLAY_JOB_NAME string = aca.outputs.replayJobName
+output CHAOS_EXPERIMENT_NAME string = chaos.outputs.experimentName

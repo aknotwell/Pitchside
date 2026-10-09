@@ -360,3 +360,33 @@ Model tokens are cents per match. The free-trial credit covers it.
   first job execution failed to parse one, and the message stayed invisible
   for 15 minutes. Fixed with a decoder (tested), failure logging and a 5-minute
   visibility timeout.
+
+## Checkpoint 7: SLO workbook; Chaos Studio drill (partly working) (2026-10-09)
+
+- **Azure Monitor workbook "MatchLens: live SLOs"** (`infra/workbooks/slo.json`,
+  deployed by `ops.bicep`). It covers:
+  - event → cue latency by path, and hot-path p50/p95/p99 tiles
+  - active replicas per service
+  - storyteller outcomes (agent, fallback, resumed)
+  - workflow latency by moment kind
+  - throughput
+  - model failures, resilience events and replays
+
+  All 10 KQL queries were validated against the workspace.
+- **Chaos Studio** (`infra/modules/chaos.bicep`, `scripts/chaos_drill.py`): an
+  Event Hubs target, the `ChangeEventHubState-1.0` capability, and an
+  experiment that disables `match-stream`, waits 60 s, then re-enables it.
+  - **Status: the experiment runs, but both state-change actions fail on the
+    target with an empty reason.**
+  - Tried so far:
+    1. A continuous action. Rejected by the service: it's a discrete fault.
+    2. Discrete actions with Event Hubs Data Owner.
+    3. The same with Contributor scoped to the namespace.
+  - Not yet tried: a newer preview API version, or the Service Bus
+    `ChangeQueueState` fault.
+  - The **ACA kill drill (checkpoint 3) is the verified resilience demo.**
+- **Simulator rides out broker outages:** `send_with_retry` backs off for up to
+  5 minutes, and the match catches up afterwards. That's useful whether or
+  not Chaos Studio cooperates.
+- **My home network** dropped DNS several times during long scripts. Cloud
+  components were unaffected. The scripts tolerate these transient failures.

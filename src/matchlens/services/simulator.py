@@ -40,6 +40,25 @@ def group_by_second(messages: list[StreamMessage]) -> list[list[StreamMessage]]:
     return groups
 
 
+async def send_with_retry(producer, batch, budget_s: float = 300.0) -> None:
+    """Ride out broker outages (e.g. the Chaos Studio drill): back off and retry for up to 5 minutes.
+    The match pauses rather than dies; the interpreter catches up once the hub is back."""
+    delay, waited = 1.0, 0.0
+    while True:
+        try:
+            await producer.send_batch(batch)
+            if waited:
+                log.warning("broker back after %.0f s; resuming the match", waited)
+            return
+        except Exception as exc:
+            if waited >= budget_s:
+                raise
+            log.warning("send failed (%s: %s); retrying in %.0f s", type(exc).__name__, str(exc)[:120], delay)
+            await asyncio.sleep(delay)
+            waited += delay
+            delay = min(delay * 2, 15.0)
+
+
 async def publish(messages: list[StreamMessage], speed: float, match_id: str) -> None:
     from azure.eventhub import EventData
     from azure.eventhub.aio import EventHubProducerClient
@@ -68,10 +87,10 @@ async def publish(messages: list[StreamMessage], speed: float, match_id: str) ->
                     try:
                         batch.add(ed)
                     except ValueError:  # batch full: flush and start a new one
-                        await producer.send_batch(batch)
+                        await send_with_retry(producer, batch)
                         batch = await producer.create_batch(partition_key=match_id)
                         batch.add(ed)
-                await producer.send_batch(batch)
+                await send_with_retry(producer, batch)
                 sent += len(g)
             if gi % 300 == 0:
                 log.info("match %s: clock %.0f s, %d messages sent", match_id, g[0].clock_s, sent)
