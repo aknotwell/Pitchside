@@ -18,6 +18,9 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write # only to post the test results comment below
     defaults:
       run:
         working-directory: backend
@@ -29,4 +32,24 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run pytest -q
+      - name: Tests
+        run: uv run pytest -q --junitxml=pytest-report.xml
+      # Show the test counts on the run's summary page, so a PR shows what actually ran.
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        run: |
+          uv run python scripts/test_summary.py pytest-report.xml > test-summary.md
+          cat test-summary.md >> "$GITHUB_STEP_SUMMARY"
+      # Post the same table on the PR itself, editing one comment instead of adding more.
+      - name: Comment test results on the PR
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        continue-on-error: true # PRs from forks only get a read-only token
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '\n\nCommit `%s` · [CI run](%s)\n' "${SHA:0:7}" "$RUN_URL" >> test-summary.md
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file test-summary.md \
+            --edit-last --create-if-none
