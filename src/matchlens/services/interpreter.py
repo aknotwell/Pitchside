@@ -28,7 +28,7 @@ tracer = trace.get_tracer("matchlens.interpreter")
 
 SNAPSHOT_EVERY_S = 5.0
 TICK_EVERY_S = 1.0  # one coalesced Web PubSub message per match per second
-MAX_FRAMES_PER_TICK = 6
+MAX_FRAMES_PER_TICK = 15
 MAX_INFLIGHT_PUBLISHES = 64  # live ticks are ephemeral: drop them rather than slow the stream down
 PUBLISH_TIMEOUT_S = 3.0
 

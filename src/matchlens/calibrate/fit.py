@@ -27,6 +27,7 @@ from pathlib import Path
 import numpy as np
 
 from matchlens.calibrate.real import SOURCE, targets
+from matchlens.contracts import HALF_LENGTH
 from matchlens.sim.engine import MatchEngine
 from matchlens.sim.params import DEFAULT_PARAMS, load_params, params_version
 
@@ -37,13 +38,15 @@ PERIOD_MIN = 15.0
 
 # Soft guard rails: (value, weight). Typical top-flight values per match, both teams.
 NORMS = {
-    "goals_per_match": (2.8, 0.5),
+    "goals_per_match": (2.8, 1.0),
     "fouls_per_match": (23.0, 0.5),
     "cards_per_match": (3.8, 0.1),
     "tackles_won_per_match": (38.0, 0.2),
     "throw_ins_per_match": (40.0, 0.2),
     "ball_in_play_share": (0.57, 0.5),
-    "header_share_of_shots": (0.17, 0.3),
+    "header_share_of_shots": (0.17, 0.5),
+    "clearances_per_match": (40.0, 0.5),
+    "outside_box_shot_share": (0.38, 0.6),
 }
 SC_WEIGHTS = {"passes_per_match": 1.0, "pass_completion": 6.0, "shots_per_match": 1.0, "pass_length_mean_m": 1.0,
               "distance_km_per90_median": 1.0, "psv99_kmh_median": 1.0, "sprints_per90_median": 0.7}
@@ -52,10 +55,10 @@ KNOBS: dict[str, tuple[float, float]] = {
     "decision_s[1]": (0.6, 2.2),
     "carry_s[1]": (0.9, 2.6),
     "shot_bias": (0.05, 1.4),
-    "long_shot_pref": (0.0, 0.08),
+    "long_shot_pref": (0.0, 0.15),
     "pass_error_m": (0.3, 1.8),
     "intercept_prob": (0.08, 0.5),
-    "pass_len_penalty_per_m": (0.001, 0.014),
+    "pass_len_penalty_per_m": (0.001, 0.02),
     "carry_keep_logit": (-1.0, 2.0),
     "tackle_rate_per_s": (0.05, 0.8),
     "foul_share_of_tackles": (0.05, 0.45),
@@ -69,6 +72,11 @@ KNOBS: dict[str, tuple[float, float]] = {
     "take_on_prob": (0.05, 0.6),
     "press_effort": (0.5, 0.95),
     "header_chance": (0.05, 0.6),
+    "crowd_tackle_boost": (0.0, 2.0),
+    "turnover_weight": (0.5, 3.0),
+    "box_space_shot_bonus": (0.0, 0.12),
+    "box_carry_risk": (0.0, 0.35),
+    "box_tackle_factor": (0.4, 1.6),
     "restart_scale": (0.7, 2.0),
 }
 
@@ -94,6 +102,9 @@ def match_stats(args: tuple[dict, int, float]) -> dict:
         "shots": count("shot"), "headers": sum(1 for e in ev if e.type == "shot" and e.qualifiers.get("body_part") == "head"),
         "goals": sum(1 for e in ev if e.type == "shot" and e.outcome == "goal"),
         "fouls": count("foul"), "cards": count("card"), "tackles": count("tackle"),
+        "outside": sum(1 for e in ev if e.type == "shot" and not (
+            (1 if e.team_id == "h" else -1) * (e.x or 0) > HALF_LENGTH - 16.5 and abs(e.y or 0) < 20.16)),
+        "clearances": sum(1 for e in ps if e.qualifiers.get("kind") == "clearance"),
         "throw_ins": sum(1 for e in ev if e.type == "ball_out" and e.qualifiers.get("restart") == "throw_in"),
         "in_play": eng.live_frames / max(1, len(ts)), "minutes": 2 * period_min,
     }
@@ -132,6 +143,8 @@ def evaluate(params: dict, seeds: list[int], pool: ProcessPoolExecutor, period_m
         "tackles_won_per_match": m("tackles") * scale, "throw_ins_per_match": m("throw_ins") * scale,
         "ball_in_play_share": m("in_play"),
         "header_share_of_shots": max(0.01, m("headers") / max(1e-9, m("shots"))),
+        "clearances_per_match": m("clearances") * scale,
+        "outside_box_shot_share": max(0.01, m("outside") / max(1e-9, m("shots"))),
         "_pass_lengths": pool_("pass_lengths"), "_psv99": pool_("psv"),
     }
 
@@ -250,6 +263,8 @@ def main() -> None:
         ("Throw-ins per match", "throw_ins_per_match", "{:.0f}"),
         ("Ball in play", "ball_in_play_share", "{:.0%}"),
         ("Headers, share of shots", "header_share_of_shots", "{:.0%}"),
+        ("Clearances per match", "clearances_per_match", "{:.0f}"),
+        ("Shots from outside the box", "outside_box_shot_share", "{:.0%}"),
     ]
     md = [
         "# Synthetic data realism report", "",

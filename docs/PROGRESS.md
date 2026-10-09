@@ -453,3 +453,60 @@ so nothing on the pitch affected what happened.
   rule-based. A replay re-simulates from the seed, so replays of matches played on the old
   engine would come out differently. The stored replay blobs are self-contained and still
   play.
+
+## Checkpoint 9: 3D pitch (2026-10-09)
+
+- **3D pitch** (`web/src/components/Pitch3D.tsx`, `athlete.ts`), built with three.js only.
+  - Every player is a procedurally rigged figure, posed each frame from the tracking data.
+    Heading turns at a limited rate, facing the ball when standing or backpedalling. Stride
+    length and cadence follow speed, with a walk blending into a run. The body leans into
+    acceleration and banks into turns.
+  - Catmull-Rom sampling between feed samples gives smooth 60 fps motion.
+  - The stadium has a crowd in the clubs' colours, floodlights and goals with nets.
+  - Cameras: broadcast, tactical, follow player, and free orbit.
+  - `?lab=1` opens an athlete test scene.
+- Top speeds no longer count half-time resets as running (capped at 40 km/h, with a test).
+
+## Checkpoint 10: ball physics and match realism (2026-10-09)
+
+Feedback: the ball didn't behave like a ball, players dribbled over the end line, carriers
+under heavy pressure kept the ball too easily, defenders never played it first time back to
+the keeper, there was no shielding, there were too few good shots, and long balls had no lift.
+
+- **Ball physics** (`sim/ball.py`): gravity, quadratic air drag, a bounce (restitution
+  about 0.5) and rolling resistance on grass.
+  - Kicks are solved backwards. A ground pass gets the launch speed that arrives at a
+    receivable pace. A lofted ball gets the launch speed whose first bounce lands on the
+    target, at an angle that depends on the type of ball (cross, switch, clearance, goal kick).
+  - Receivers meet high balls where they drop through head height. Headers and aerial
+    duels happen there.
+- **Dribbling** is touch by touch: the ball is pushed ahead and the carrier catches up.
+  Heavier touches come when hurried, and defenders can nick an exposed ball.
+- **Lines:** dribbling over a line now gives a throw-in, goal kick or corner.
+- **Pressure:** tackle rates rise with each extra opponent around the ball.
+- **Shielding:** shielding is preferred under pressure (scaled by composure). The ball is
+  kept on the far side, a good shield is hard to get round, and the 3D model squats, arms
+  out, with its back to the opponent.
+- **Back to the keeper:** a defender who wins a long ball in their own third with the
+  keeper free plays it first time back to them (50% of the time).
+- **Corners:** defenders sometimes head crosses behind for a corner.
+- **Shooting:** players shoot with a clear sight of goal in the box. Long shots happen,
+  driven by the long-shot trait. Bodies in the way block shots. Defenders recover at
+  full effort to stay in front of a runner near goal, so attackers no longer walk the ball in.
+- **3D view:** the ball rises and bounces, players swing a kicking leg (with their
+  preferred foot) when they strike it, and the live feed runs at 5 Hz instead of 2 Hz.
+  At 2 Hz, passes looked like they braked near players. Replays store ball height.
+- **Calibration** (32 held-out matches):
+
+  | Measure | Result | Real or typical |
+  |---|---|---|
+  | Shots per match | 26 | 26 |
+  | Goals per match | about 3 (2.6 and 3.5 on two sets) | 2.8 |
+  | Passes per match | 778 | 804 |
+  | Pass completion | 87% | 83% |
+  | Ball in play | 55% | 57% |
+  | Headers, share of shots | 11% | |
+  | Shots from outside the box | 26% | |
+  | First-time passes back to the keeper | about 2 per match | |
+
+  Remaining gaps are in `docs/REALISM.md`.

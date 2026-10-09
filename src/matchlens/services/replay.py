@@ -22,7 +22,7 @@ from matchlens.sim.engine import simulate
 log = logging.getLogger("matchlens.replay")
 
 
-def package(match_id: str, seed: int, period_min: float, cues: list[dict], frame_hz: float = 2.0) -> dict:
+def package(match_id: str, seed: int, period_min: float, cues: list[dict], frame_hz: float = 5.0) -> dict:
     r = simulate(seed, match_id=match_id, params={"period_min": period_min})
     step = max(1, int(round(r.metadata.fps / frame_hz)))
     ids = r.player_ids
@@ -32,7 +32,7 @@ def package(match_id: str, seed: int, period_min: float, cues: list[dict], frame
         b = r.tracking_ball[k]
         frames.append([round(float(r.tracking_t[k]), 1), round(float(b[0]), 1), round(float(b[1]), 1),
                        [None if pl[j][0] != pl[j][0] else [round(float(pl[j][0]), 1), round(float(pl[j][1]), 1)]
-                        for j in range(len(ids))]])
+                        for j in range(len(ids))], round(float(b[2]), 1)])  # ball height last (older replays omit it)
     return {"schemaVersion": "1.0", "matchId": match_id, "meta": r.metadata.model_dump(mode="json"),
             "paramsVersion": r.metadata.params_version, "playerIds": ids, "frameHz": frame_hz, "frames": frames,
             "events": [e.model_dump(mode="json", include={"event_id", "clock_s", "display_clock", "type", "team_id",
