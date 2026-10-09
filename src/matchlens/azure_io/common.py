@@ -76,7 +76,7 @@ def setup_telemetry(service: str) -> None:
     global _telemetry_done
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    for noisy in ("azure.core.pipeline.policies.http_logging_policy", "azure.eventhub", "azure.servicebus",
+    for noisy in ("azure", "azure.core.pipeline.policies.http_logging_policy", "azure.eventhub", "azure.servicebus",
                   "uamqp", "azure.identity", "azure.monitor.opentelemetry.exporter"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     if _telemetry_done:

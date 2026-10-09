@@ -83,7 +83,8 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
         ws.onclose = () => setLive((l) => ({ ...l, connected: false }));
         ws.onmessage = (ev) => {
           try {
-            const msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+            let msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+            if (typeof msg === "string") msg = JSON.parse(msg); // tolerate double-encoded payloads
             if (msg.type === "frames") onFrames(msg.frames as Frame[]);
             else if (msg.type === "state") states.current.push(msg.state as MatchState);
             else if (msg.type === "cue") allCues.current.set(msg.cue.id, msg.cue as Cue);

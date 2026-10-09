@@ -4,7 +4,6 @@ Cosmos DB change feed on ``cues`` -> Azure Web PubSub group per match x persona 
 Every cue, template or agent-written, reaches browsers through this one event-driven hop.
 """
 
-import json
 import logging
 import os
 
@@ -34,8 +33,7 @@ def cue_publisher(docs: func.DocumentList) -> None:
         cue = {k: v for k, v in dict(d).items() if not k.startswith("_")}
         group = f"m.{cue['matchId']}.cues.{cue.get('persona', 'all')}.{cue.get('lang', 'all')}"
         try:
-            client().send_to_group(group, json.dumps({"type": "cue", "cue": cue}, separators=(",", ":")),
-                                   content_type="application/json")
+            client().send_to_group(group, {"type": "cue", "cue": cue}, content_type="application/json")
             sent += 1
         except Exception as exc:  # one bad cue must not block the feed
             logging.warning("publish failed for %s: %s", cue.get("id"), exc)

@@ -19,13 +19,14 @@ param scaleRules array = []
 param cpu string = '0.5'
 param memory string = '1Gi'
 
-resource existingApp 'Microsoft.App/containerApps@2024-03-01' existing = if (exists) {
-  name: name
+module fetchImage 'fetch-image.bicep' = {
+  name: '${name}-image'
+  params: { name: name, exists: exists }
 }
 
-var image = exists ? existingApp!.properties.template.containers[0].image : placeholderImage
+var image = exists && !empty(fetchImage.outputs.image) ? fetchImage.outputs.image : placeholderImage
 
-resource app 'Microsoft.App/containerApps@2024-03-01' = {
+resource app 'Microsoft.App/containerApps@2025-07-01' = {
   name: name
   location: location
   tags: union(tags, { 'azd-service-name': serviceName })

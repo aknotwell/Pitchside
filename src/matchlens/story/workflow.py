@@ -323,12 +323,13 @@ class FoundryExplainer:
                 options = {"response_format": Explanation, "max_tokens": self.max_output_tokens}
                 if dep.startswith(("gpt-5", "gpt-6", "o")):
                     options["reasoning"] = {"effort": "minimal" if dep.startswith("gpt-5") else "low"}
-                resp = await asyncio.wait_for(agent.run(prompt, options=options), timeout=self.timeout_s)
+                timeout = self.timeout_s * (2.0 if moment.kind in ("half_time", "full_time") else 1.0)
+                resp = await asyncio.wait_for(agent.run(prompt, options=options), timeout=timeout)
                 value = resp.value
                 if value is None:
                     raise ValueError("model returned no structured output")
                 return value, dep
             except Exception as exc:  # try the next deployment
                 last = exc
-                log.warning("deployment %s failed: %s", dep, exc)
+                log.warning("deployment %s failed: %s %s", dep, type(exc).__name__, exc)
         raise RuntimeError(f"all deployments failed: {last}")

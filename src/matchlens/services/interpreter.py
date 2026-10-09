@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import pickle
 import time
@@ -146,7 +145,7 @@ class InterpreterService:
                 log.warning("output failed: %s", r)
 
     async def _publish(self, group: str, payload: dict) -> None:
-        await self.wps.send_to_group(group, json.dumps(payload, separators=(",", ":")), content_type="application/json")
+        await self.wps.send_to_group(group, payload, content_type="application/json")  # SDK serializes dicts
 
 
 def main() -> None:

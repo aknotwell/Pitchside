@@ -19,7 +19,7 @@ resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: logAnalyticsName
 }
 
-resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
+resource env 'Microsoft.App/managedEnvironments@2025-07-01' = {
   name: 'cae-${resourceToken}'
   location: location
   tags: tags
@@ -140,7 +140,7 @@ module storyteller 'containerapp.bicep' = {
 }
 
 // The simulator runs as a job: one execution = one live match. Parallel executions = load test.
-resource simulator 'Microsoft.App/jobs@2024-03-01' = {
+resource simulator 'Microsoft.App/jobs@2025-07-01' = {
   name: 'job-sim-${resourceToken}'
   location: location
   tags: tags

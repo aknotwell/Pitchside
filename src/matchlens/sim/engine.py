@@ -69,15 +69,15 @@ def shot_geometry(xa: float, ya: float) -> tuple[float, float]:
     return dist, abs(a1 - a2)
 
 
-def display_clock(clock_s: float, period: int, period_start_s: float) -> str:
-    base = 0 if period == 1 else 45 * 60
+def display_clock(clock_s: float, period: int, period_start_s: float, period_min: float = 45) -> str:
+    regulation = period_min * 60
+    base = 0 if period == 1 else regulation
     elapsed = clock_s - period_start_s
-    regulation = 45 * 60
     if elapsed <= regulation:
         total = base + elapsed
         return f"{int(total // 60):02d}:{int(total % 60):02d}"
     extra = elapsed - regulation
-    return f"{(base + regulation) // 60}+{int(extra // 60) + 1}:{int(extra % 60):02d}"
+    return f"{int((base + regulation) // 60)}+{int(extra // 60) + 1}:{int(extra % 60):02d}"
 
 
 @dataclass
@@ -205,7 +205,7 @@ class MatchEngine:
             seq=self.seq,
             period=self.period,
             clock_s=round(t, 2),
-            display_clock=display_clock(t, self.period, self.period_start),
+            display_clock=display_clock(t, self.period, self.period_start, self.p["period_min"]),
             type=etype,  # type: ignore[arg-type]
             team_id=team,
             player_id=player,
@@ -224,7 +224,9 @@ class MatchEngine:
         return out
 
     def _minute(self, t: float) -> float:
-        return (t - self.period_start) / 60 + (0 if self.period == 1 else 45)
+        """Minute on a 90-minute scale, so scripted stories fire at the same phase in short matches."""
+        frac = (t - self.period_start) / (self.p["period_min"] * 60)
+        return 45 * frac + (0 if self.period == 1 else 45)
 
     def shape(self, team: str, ball_xa: float, ball_ya: float, in_possession: bool) -> list[tuple[float, float]]:
         """Target positions (team-attacking frame) of the 11 slots given the ball."""
