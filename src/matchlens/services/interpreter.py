@@ -17,14 +17,16 @@ import time
 
 from opentelemetry import trace
 
-from matchlens.azure_io.common import async_credential, settings, setup_telemetry
-from matchlens.contracts import StreamMessage, frames_group, state_group
+from matchlens.azure_io.common import async_credential, create_once, settings, setup_telemetry
+from matchlens.contracts import StreamMessage, frames_group
 from matchlens.interpret.state import MatchInterpreter, Output
 
 log = logging.getLogger("matchlens.interpreter")
 tracer = trace.get_tracer("matchlens.interpreter")
 
 SNAPSHOT_EVERY_S = 5.0
+TICK_EVERY_S = 1.0  # one coalesced Web PubSub message per match per second
+MAX_FRAMES_PER_TICK = 6
 
 
 class InterpreterService:
@@ -33,6 +35,9 @@ class InterpreterService:
         self.matches: dict[str, MatchInterpreter] = {}
         self.match_partition: dict[str, str] = {}
         self.last_checkpoint: dict[str, float] = {}
+        self.pending_frames: dict[str, list] = {}
+        self.pending_state: dict[str, dict] = {}
+        self.last_tick: dict[str, float] = {}
 
     async def start(self) -> None:
         from azure.cosmos.aio import CosmosClient
@@ -127,7 +132,7 @@ class InterpreterService:
         latest_frames: dict[str, list] = {}
         for it, out in outputs:
             for cue in out.cues:
-                tasks.append(self.cues.upsert_item(cue.to_doc()))
+                tasks.append(create_once(self.cues, cue.to_doc()))
             for m in out.moments:
                 doc = m.model_dump(mode="json")
                 tasks.append(self.moments.upsert_item({"id": m.moment_id, "matchId": m.match_id, **doc}))
@@ -139,10 +144,21 @@ class InterpreterService:
                 latest_frames.setdefault(it.match_id, []).extend(out.frames["frames"])
         for mid, st in latest_state.items():
             tasks.append(self.state.upsert_item(st))
-            slim = {k: v for k, v in st.items() if k != "meta"}
-            tasks.append(self._publish(state_group(mid), {"type": "state", "state": slim}))
+            self.pending_state[mid] = {k: v for k, v in st.items() if k != "meta"}
         for mid, frames in latest_frames.items():
-            tasks.append(self._publish(frames_group(mid), {"type": "frames", "matchId": mid, "frames": frames}))
+            self.pending_frames.setdefault(mid, []).extend(frames)
+        now = time.monotonic()
+        for mid in set(self.pending_frames) | set(self.pending_state):
+            ended = bool(self.pending_state.get(mid, {}).get("ended"))
+            if now - self.last_tick.get(mid, 0.0) < TICK_EVERY_S and not ended:
+                continue
+            frames = self.pending_frames.pop(mid, [])
+            if len(frames) > MAX_FRAMES_PER_TICK:  # keep evenly spaced frames; the browser interpolates
+                step = len(frames) / MAX_FRAMES_PER_TICK
+                frames = [frames[int(k * step)] for k in range(MAX_FRAMES_PER_TICK - 1)] + [frames[-1]]
+            tick = {"type": "tick", "matchId": mid, "frames": frames, "state": self.pending_state.pop(mid, None)}
+            self.last_tick[mid] = now
+            tasks.append(self._publish(frames_group(mid), tick))
         if sb_msgs:
             tasks.append(self.sender.send_messages(sb_msgs))
         results = await asyncio.gather(*tasks, return_exceptions=True)

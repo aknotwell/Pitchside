@@ -102,3 +102,15 @@ def current_trace_id() -> str | None:
 
     ctx = trace.get_current_span().get_span_context()
     return format(ctx.trace_id, "032x") if ctx and ctx.is_valid else None
+
+
+async def create_once(container, doc: dict) -> bool:
+    """Insert an immutable document; a replayed duplicate (409) is a no-op, so the change feed
+    never fires twice for the same cue. Returns True if this call created it."""
+    from azure.core.exceptions import ResourceExistsError
+
+    try:
+        await container.create_item(doc)
+        return True
+    except ResourceExistsError:
+        return False

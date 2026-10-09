@@ -17,7 +17,7 @@ import time
 
 from opentelemetry import trace
 
-from matchlens.azure_io.common import async_credential, settings, setup_telemetry
+from matchlens.azure_io.common import async_credential, create_once, settings, setup_telemetry
 from matchlens.contracts import Moment
 from matchlens.story.workflow import CHECKPOINT_TYPES, FoundryExplainer, Storyteller
 
@@ -129,7 +129,7 @@ class StorytellerService:
                 log.warning("workflow failed for %s: %s (abandoning for redelivery)", moment.moment_id, exc)
                 await receiver.abandon_message(msg)
                 return
-            await asyncio.gather(*(self.cues.upsert_item(c.to_doc()) for c in cues))
+            await asyncio.gather(*(create_once(self.cues, c.to_doc()) for c in cues))
             await self.runs.upsert_item({"id": f"run-{moment.moment_id}", "matchId": moment.match_id,
                                          "type": "storyRun", "at": time.time(), **info})
             await receiver.complete_message(msg)

@@ -19,7 +19,10 @@ agent resumes exactly where it stopped.
    these numbers; a code verifier rejects anything else.
 4. Open **Producer** → **Start a match**. This launches a new Container Apps Job
    execution, which plays a live match.
-5. Click **Chaos drill**. The next explanation kills a storyteller replica
+5. Open **Ask** and ask "Who has been the better team and why?" An Agent
+   Framework agent answers by calling the **MatchLens MCP server on Azure
+   Functions**, so every number comes from a tool.
+6. Click **Chaos drill**. The next explanation kills a storyteller replica
    mid-workflow. Watch the run table: Service Bus redelivers the moment and the
    Agent Framework workflow **resumes from its Cosmos DB checkpoint** without
    calling the model again.
@@ -42,6 +45,10 @@ flowchart LR
   WEB --> API[ACA: api<br/>FastAPI]
   API --> COS
   API -->|start match| SIM
+  API -->|Ask the match: MAF agent| MCP[Functions Flex<br/>match-data MCP server]
+  MCP --> COS
+  KV[(Key Vault)] -.->|MCP key, managed identity| API
+  LA[Logic App keep-live] -->|every 10 min: start a match if none is live| SIM
   INT & STO & API -.->|OpenTelemetry| AI[Application Insights]
 ```
 
@@ -87,13 +94,21 @@ flowchart LR
   keyless OIDC deploy workflow is included.
 - **Observable.** OpenTelemetry flows to Application Insights (Entra-auth).
   Every cue carries the `trace_id` of the simulator second that caused it.
+  There is a multi-region availability test with an alert, and SLO queries
+  are in [`docs/kql/slo.kql`](docs/kql/slo.kql).
+- **Guarded for a public demo.** Per-client rate limits, a global question
+  budget, and caps on agent tool calls, round trips and wall time
+  (`FunctionInvocationConfiguration`).
 
 ## Hero technologies
 
 | Technology | Where |
 |---|---|
 | Azure Container Apps (+ Jobs, KEDA) | `infra/modules/aca.bicep`: api, interpreter, storyteller and the simulator job |
-| Azure Functions (Flex Consumption) | `functions/cue_publisher`: Cosmos change feed → Web PubSub |
+| Azure Functions (Flex Consumption) | `functions/cue_publisher`: Cosmos change feed → Web PubSub, plus the **match-data MCP server** (4 MCP tool triggers) |
+| MCP (Azure Functions + Agent Framework client) | "Ask the match" agent and GitHub Copilot (`.vscode/mcp.json`, plus the Azure MCP Server) call the same tools |
+| Logic Apps | `logic-keeplive`: keeps a live match on air for judges (managed identity → ARM) |
+| Key Vault | Holds the only non-Entra secret (the MCP extension key), read by managed identity |
 | Microsoft Foundry | `infra/modules/foundry.bicep`: project with pinned `gpt-5-mini` and `gpt-4.1-mini` deployments |
 | Microsoft Agent Framework 1.21 | `src/matchlens/story/workflow.py`: checkpointed workflow with `CosmosCheckpointStorage` |
 | Azure Cosmos DB (serverless) | State, cues, moments, runs and workflow checkpoints; change feed drives rendering |

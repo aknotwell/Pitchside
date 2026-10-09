@@ -85,7 +85,10 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
           try {
             let msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
             if (typeof msg === "string") msg = JSON.parse(msg); // tolerate double-encoded payloads
-            if (msg.type === "frames") onFrames(msg.frames as Frame[]);
+            if (msg.type === "tick") {
+              onFrames((msg.frames ?? []) as Frame[]);
+              if (msg.state) states.current.push(msg.state as MatchState);
+            } else if (msg.type === "frames") onFrames(msg.frames as Frame[]);
             else if (msg.type === "state") states.current.push(msg.state as MatchState);
             else if (msg.type === "cue") allCues.current.set(msg.cue.id, msg.cue as Cue);
           } catch { /* ignore non-JSON */ }

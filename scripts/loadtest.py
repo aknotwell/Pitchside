@@ -52,6 +52,7 @@ async def watch(api: str, match_id: str, until: float, sink: list[dict]) -> None
     import websockets
 
     url = json.load(urllib.request.urlopen(f"{api}/api/negotiate?matchId={match_id}&persona=analyst&lang=en"))["url"]
+    seen: set[tuple[str, str]] = set()
     async with websockets.connect(url, max_size=None) as ws:
         while time.time() < until:
             try:
@@ -65,6 +66,10 @@ async def watch(api: str, match_id: str, until: float, sink: list[dict]) -> None
                 continue
             cue = m["cue"]
             enq = (cue.get("data") or {}).get("enqueuedAtMs")
+            key = (match_id, cue["id"])
+            if key in seen:
+                continue  # measure first delivery only (the client de-dupes by cue id too)
+            seen.add(key)
             if enq:
                 sink.append({"match": match_id, "template": cue["template"], "source": cue["source"],
                              "latency_ms": time.time() * 1000 - enq})
