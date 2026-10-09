@@ -98,7 +98,10 @@ def match_stats(args: tuple[dict, int, float]) -> dict:
     eng.live_frames = 0
     ts, _, pl, ids = eng.simulate_tracking()
     ev = eng.events
-    ps = [e for e in ev if e.type == "pass"]
+    # SkillCorner counts player possessions ending in a pass: restart deliveries (throw-ins, goal kicks,
+    # corners, free kicks, kick-offs) are not player possessions, so they are left out here too.
+    all_passes = [e for e in ev if e.type == "pass"]
+    ps = [e for e in all_passes if not e.qualifiers.get("set_piece")]
     count = lambda kind: sum(1 for e in ev if e.type == kind)  # noqa: E731
     out = {
         "passes": len(ps), "completion": float(np.mean([e.outcome == "complete" for e in ps])) if ps else 0.0,
@@ -108,7 +111,7 @@ def match_stats(args: tuple[dict, int, float]) -> dict:
         "fouls": count("foul"), "cards": count("card"), "tackles": count("tackle"),
         "outside": sum(1 for e in ev if e.type == "shot" and not (
             (1 if e.team_id == "h" else -1) * (e.x or 0) > HALF_LENGTH - 16.5 and abs(e.y or 0) < 20.16)),
-        "clearances": sum(1 for e in ps if e.qualifiers.get("kind") == "clearance"),
+        "clearances": sum(1 for e in all_passes if e.qualifiers.get("kind") == "clearance"),
         "throw_ins": sum(1 for e in ev if e.type == "ball_out" and e.qualifiers.get("restart") == "throw_in"),
         "in_play": eng.live_frames / max(1, len(ts)), "minutes": 2 * period_min,
     }
@@ -299,7 +302,8 @@ def main() -> None:
            f"| Pass length | {ks(before['_pass_lengths'], ev_t['_pass_lengths']):.3f} | "
            f"**{ks(after['_pass_lengths'], ev_t['_pass_lengths']):.3f}** |",
            f"| Player peak speed | {ks(before['_psv99'], ph_t['_psv99']):.3f} | **{ks(after['_psv99'], ph_t['_psv99']):.3f}** |",
-           "", "Definitions follow the source where possible: passes are player possessions ending in a pass; a sprint "
+           "", "Definitions follow the source where possible: passes are player possessions ending in a pass (open play; "
+           "restart deliveries such as throw-ins and goal kicks are not player possessions in SkillCorner either); a sprint "
            "is ≥ 25.2 km/h for at least one 1 Hz sample; peak speed is the 99.9th percentile of 1 s speeds per player "
            "(PSV-99 analogue).", "",
            "Known gaps: event definitions are not one-to-one with the source (for example, SkillCorner on-ball "

@@ -1,6 +1,6 @@
 {
- "params_version": "fit-skillcorner-agents-46163a5e2b",
- "fitted_at": "2026-10-09T20:11:29Z",
+ "params_version": "fit-skillcorner-agents-e5a2591bf5",
+ "fitted_at": "2026-10-09T20:44:08Z",
  "source": "SkillCorner Open Data (github.com/SkillCorner/opendata), MIT licence",
  "targets": {
   "events": {
@@ -52,22 +52,22 @@
   "outside_box_shot_share": 0.38
  },
  "held_out": {
-  "passes_per_match": 910.2188,
-  "pass_completion": 0.825,
-  "shots_per_match": 23.4375,
-  "pass_length_mean_m": 18.2727,
-  "distance_km_per90_median": 10.359,
-  "psv99_kmh_median": 25.9712,
-  "sprints_per90_median": 8.5366,
-  "goals_per_match": 3.0,
-  "fouls_per_match": 23.1562,
-  "cards_per_match": 3.2812,
-  "tackles_won_per_match": 54.0,
-  "throw_ins_per_match": 52.5938,
-  "ball_in_play_share": 0.5176,
-  "header_share_of_shots": 0.124,
-  "clearances_per_match": 46.3125,
-  "outside_box_shot_share": 0.416
+  "passes_per_match": 810.0,
+  "pass_completion": 0.8231,
+  "shots_per_match": 24.4219,
+  "pass_length_mean_m": 16.8106,
+  "distance_km_per90_median": 10.2265,
+  "psv99_kmh_median": 26.1682,
+  "sprints_per90_median": 8.6752,
+  "goals_per_match": 2.8594,
+  "fouls_per_match": 24.0938,
+  "cards_per_match": 3.6094,
+  "tackles_won_per_match": 59.625,
+  "throw_ins_per_match": 54.6562,
+  "ball_in_play_share": 0.5257,
+  "header_share_of_shots": 0.1209,
+  "clearances_per_match": 54.9844,
+  "outside_box_shot_share": 0.3589
  },
  "params": {
   "version": "fit-skillcorner-agents",
@@ -88,7 +88,7 @@
   "carry_value_discount": 0.75,
   "shot_bias": 0.5,
   "shot_max_dist_m": 30.0,
-  "long_shot_pref": 0.076,
+  "long_shot_pref": 0.066,
   "box_space_shot_bonus": 0.005,
   "box_carry_risk": 0.12,
   "box_tackle_factor": 1.15,
@@ -98,7 +98,7 @@
   "pass_error_m": 1.2,
   "clear_value": 0.015,
   "clear_cost": 0.01,
-  "long_pass_cost": 0.012,
+  "long_pass_cost": 0.025,
   "close_while_travel": 0.3,
   "support_m": [
    6.0,
@@ -128,7 +128,7 @@
   "press_effort": 0.6125,
   "take_on_logit": 0.0,
   "box_foul_factor": 0.08,
-  "header_chance": 0.525,
+  "header_chance": 0.6,
   "foul_share_of_tackles": 0.3,
   "card_share_of_fouls": 0.12,
   "xg_a": -0.95,
@@ -177,12 +177,16 @@
    240
   ],
   "max_speed_mps": [
-   7.4,
-   8.5625
+   7.6,
+   8.9
   ],
   "max_accel_mps2": 4.2,
   "steer_gain": 1.1,
-  "run_prob_per_s": 0.035,
+  "run_prob_per_s": 0.014,
+  "run_s": [
+   2.8,
+   4.8
+  ],
   "drift_m": 2.0,
   "drift_tau_s": 15.0,
   "jog_max_mps": 4.625,

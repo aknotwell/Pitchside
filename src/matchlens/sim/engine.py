@@ -1312,7 +1312,7 @@ class MatchEngine:
                         role = self.role[j]
                         ty = py * (0.6 if role in ("inverted winger", "poacher") else 0.95) + rng.normal(0, 3)
                         self.run_tgt[j] = self._inside(np.array([min(line + rng.uniform(5, 13), 47.0), ty]) * s, 2.0)
-                        self.run_until[j] = t + rng.uniform(1.8, 3.5)
+                        self.run_until[j] = t + rng.uniform(*p["run_s"])
                 running = self.run_until[A] > t
                 tgt[A[running]] = self.run_tgt[A[running]]
                 urgent[A[running]] = 1.0  # runs in behind are flat out

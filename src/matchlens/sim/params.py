@@ -80,6 +80,7 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "max_accel_mps2": 4.2,
     "steer_gain": 1.1,
     "run_prob_per_s": 0.06,
+    "run_s": [1.8, 3.5],  # how long a run in behind lasts
     "drift_m": 3.0,  # off-ball positional wander (Ornstein-Uhlenbeck amplitude, metres)
     "drift_tau_s": 15.0,
     "jog_max_mps": 5.0,
