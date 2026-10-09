@@ -31,8 +31,14 @@ export interface MatchState {
   meta?: MatchMeta | null;
 }
 
-export interface Player { id: string; name: string; number: number; position: string; team_id: string }
-export interface Team { id: string; name: string; short: string; color: string; formation: string; players: Player[] }
+export interface Player {
+  id: string; name: string; number: number; position: string; team_id: string;
+  role?: string; foot?: "R" | "L"; traits?: Record<string, number>;
+}
+export interface Team {
+  id: string; name: string; short: string; color: string; formation: string; players: Player[];
+  style_name?: string; style?: Record<string, number>;
+}
 export interface MatchMeta { match_id: string; home: Team; away: Team; seed: number; params_version: string; competition: string }
 
 export interface MatchSummary {

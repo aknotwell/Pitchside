@@ -46,7 +46,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; pa
 @keyframes slide { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .third, .panel { animation: none; } }
 .side { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.tabs { display: flex; gap: 6px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .stats table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .stats td, .stats th { padding: 4px; text-align: center; } .stats td.k { color: var(--muted); font-size: 12px; }
 .bar { margin-top: 10px; } .bar-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
@@ -75,3 +75,11 @@ footer { padding: 10px 16px; color: var(--muted); font-size: 12px; border-top: 1
 .answers { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .answers li { border: 1px solid var(--line); border-radius: 6px; padding: 8px; font-size: 13px; } .answers p { margin: 4px 0; }
 .panel audio { width: 100%; margin-top: 6px; }
+.follow-ring { fill: none; stroke: #fff; stroke-width: .4; stroke-dasharray: 1 .6; }
+.squads { display: flex; flex-direction: column; gap: 14px; max-height: 70vh; overflow: auto; }
+.squad-head { border-left: 4px solid; padding-left: 8px; margin-bottom: 6px; }
+.squad ul { list-style: none; margin: 0; padding: 0; }
+.squad li { display: flex; gap: 8px; padding: 5px 4px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+.squad li.on { background: #1b2633; } .squad li.bench { opacity: .55; }
+.squad .no { width: 22px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.squad .who { display: flex; flex-direction: column; } .squad .traits { font-size: 11px; color: var(--accent); }

@@ -6,7 +6,7 @@ import pytest
 
 from matchlens.contracts import StreamMessage
 from matchlens.interpret.state import MatchInterpreter
-from matchlens.sim.engine import simulate
+from matchlens.sim.engine import MatchEngine, simulate
 
 SHORT = {"period_min": 8}
 
@@ -53,6 +53,59 @@ def test_event_sanity(short_match):
     for e in short_match.events:
         if e.x is not None:
             assert -53 <= e.x <= 53 and -35 <= e.y <= 35
+
+
+def test_players_have_roles_traits_and_teams_have_styles(short_match):
+    meta = short_match.metadata
+    for team in (meta.home, meta.away):
+        assert team.style_name and set(team.style) == {"press", "line", "width", "tempo", "directness"}
+        assert all(p.role and len(p.traits) >= 15 for p in team.players)
+    # individuality: no two outfield starters share the same trait profile
+    profiles = [tuple(sorted(p.traits.items())) for p in meta.home.players[1:11]]
+    assert len(set(profiles)) == len(profiles)
+
+
+class _StateLog(MatchEngine):
+    def _step(self, t):
+        super()._step(t)
+        self.log.append((self.state, self.owner))
+
+
+@pytest.fixture(scope="module")
+def logged():
+    eng = _StateLog(11, params=SHORT)
+    eng.log = []
+    return eng, eng.run()
+
+
+def test_ball_keeps_moving_while_a_player_has_it(logged):
+    """No more frozen ball while someone is on it: they take a touch, dribble or shield."""
+    eng, r = logged
+    v = np.r_[0.0, np.linalg.norm(np.diff(r.tracking_ball[:, :2], axis=0), axis=1) * r.metadata.fps]
+    owned = np.array([s == "owned" for s, _ in eng.log])
+    longest, run = 0, 0
+    for still in (v < 0.2) & owned:
+        run = run + 1 if still else 0
+        longest = max(longest, run)
+    assert longest / r.metadata.fps < 3.0  # (goalkeepers holding a catch is the longest legitimate pause)
+    assert ((v < 0.2) & owned).sum() / owned.sum() < 0.12
+
+
+def test_ball_carrier_is_engaged_in_open_play(logged):
+    """Somebody closes the ball down: the carrier's nearest opponent is usually within a few metres."""
+    eng, r = logged
+    near = []
+    for k in range(0, len(eng.log), 5):
+        state, owner = eng.log[k]
+        if state != "owned" or owner < 0 or eng.is_gk[owner]:
+            continue
+        team = r.player_ids[owner][0]
+        opp = [j for j, pid in enumerate(r.player_ids) if pid[0] != team]
+        d = np.linalg.norm(r.tracking_players[k, opp] - r.tracking_ball[k, :2], axis=1)
+        near.append(np.nanmin(d))
+    near = np.array(near)
+    assert np.median(near) < 6.0
+    assert (near > 12).mean() < 0.1
 
 
 def test_interpreter_replay_is_identical(short_match):

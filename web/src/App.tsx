@@ -5,6 +5,7 @@ import { Pitch } from "./components/Pitch";
 import { Ask } from "./components/Ask";
 import { Producer } from "./components/Producer";
 import { Scoreboard } from "./components/Scoreboard";
+import { Squads } from "./components/Squads";
 import { Stats } from "./components/Stats";
 import { WhyDrawer } from "./components/WhyDrawer";
 import { BROADCAST_DELAY_S, useLiveMatch } from "./live";
@@ -20,7 +21,8 @@ export default function App() {
   const [persona, setPersona] = useState<Persona>((params.get("persona") as Persona) || "casual");
   const [lang, setLang] = useState<Lang>((params.get("lang") as Lang) || "en");
   const [why, setWhy] = useState<Cue | null>(null);
-  const [tab, setTab] = useState<"stats" | "feed" | "ask" | "producer">("stats");
+  const [tab, setTab] = useState<"stats" | "squads" | "feed" | "ask" | "producer">("stats");
+  const [follow, setFollow] = useState<string | null>(null);
   const [replays, setReplays] = useState<Awaited<ReturnType<typeof api.replays>>["replays"]>([]);
   const [replayId, setReplayId] = useState<string | null>(params.get("replay"));
   const [replaySpeed, setReplaySpeed] = useState(4);
@@ -88,16 +90,20 @@ export default function App() {
       <main>
         <section className="stage">
           <Scoreboard state={live.state} delay={replayId ? 0 : BROADCAST_DELAY_S} connected={live.connected} replay={!!replayId} />
-          <Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} />
+          <Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} follow={follow} />
           <Overlay cues={live.cues} onWhy={setWhy} />
         </section>
         <aside className="side">
           <nav className="tabs">
-            {(["stats", "feed", "ask", "producer"] as const).map((t) => (
+            {(["stats", "squads", "feed", "ask", "producer"] as const).map((t) => (
               <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "feed" ? "Moments" : t[0].toUpperCase() + t.slice(1)}</button>
             ))}
           </nav>
           {tab === "stats" && <Stats state={live.state} persona={persona} />}
+          {tab === "squads" && (
+            <Squads meta={live.state?.meta} selected={follow} onSelect={setFollow}
+                    onPitch={new Set(live.frame?.players.map((p) => p.id) ?? [])} />
+          )}
           {tab === "feed" && (
             <ul className="feed">
               {live.history.map((c) => (

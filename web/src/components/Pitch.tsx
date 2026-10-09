@@ -2,7 +2,7 @@ import type { Cue, Frame, MatchMeta } from "../types";
 
 const L = 105, W = 68;
 
-export function Pitch({ frame, meta, cues }: { frame: Frame | null; meta?: MatchMeta | null; cues: Cue[] }) {
+export function Pitch({ frame, meta, cues, follow }: { frame: Frame | null; meta?: MatchMeta | null; cues: Cue[]; follow?: string | null }) {
   const numbers = new Map<string, number>();
   meta?.home.players.forEach((p) => numbers.set(p.id, p.number));
   meta?.away.players.forEach((p) => numbers.set(p.id, p.number));
@@ -37,6 +37,7 @@ export function Pitch({ frame, meta, cues }: { frame: Frame | null; meta?: Match
         return (
           <g key={p.id} transform={`translate(${p.x.toFixed(2)} ${(-p.y).toFixed(2)})`}>
             {tag && <circle r={3.2} className="tag-ring" />}
+            {follow === p.id && <circle r={2.6} className="follow-ring" />}
             <circle r={1.5} fill={colors[team]} className="player" />
             <text y={0.55} className="num">{numbers.get(p.id) ?? ""}</text>
             {tag && (

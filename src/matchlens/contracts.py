@@ -45,6 +45,9 @@ class Player(BaseModel):
     number: int
     position: str
     team_id: str
+    role: str = ""
+    foot: Literal["R", "L"] = "R"
+    traits: dict[str, int] = Field(default_factory=dict, description="1-99 ratings, e.g. pace, passing, vision")
 
 
 class Team(BaseModel):
@@ -54,6 +57,8 @@ class Team(BaseModel):
     color: str
     formation: str
     players: list[Player]
+    style_name: str = ""
+    style: dict[str, float] = Field(default_factory=dict, description="press, line, width, tempo, directness")
 
 
 class MatchMetadata(BaseModel):
