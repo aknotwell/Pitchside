@@ -88,6 +88,10 @@ footer { padding: 10px 16px; color: var(--muted); font-size: 12px; border-top: 1
 .answers li { border: 1px solid var(--line); border-radius: 6px; padding: 8px; font-size: 13px; } .answers p { margin: 4px 0; }
 .panel audio { width: 100%; margin-top: 6px; }
 .follow-ring { fill: none; stroke: #fff; stroke-width: .4; stroke-dasharray: 1 .6; }
+.squads-card { display: flex; flex-direction: column; gap: 10px; }
+.team-toggle { display: flex; }
+.team-toggle button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; padding: 6px 8px; }
+.team-toggle .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; box-shadow: 0 0 0 1px #fff9; }
 .squads { display: flex; flex-direction: column; gap: 14px; max-height: 70vh; overflow: auto; }
 .squad-head { border-left: 4px solid; padding-left: 8px; margin-bottom: 6px; }
 .squad ul { list-style: none; margin: 0; padding: 0; }
