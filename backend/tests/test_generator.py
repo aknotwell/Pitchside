@@ -18,6 +18,7 @@ from pitchside.generator.validate import match_stats, single_match_report
 from pitchside.schemas import Event, MatchMeta, TrackingFrame
 
 SHORT = 8.0  # minutes per half, keeps tests fast
+RUN_OFF = 8.0  # metres players may overrun the lines
 
 
 @pytest.fixture(scope="module")
@@ -40,10 +41,19 @@ def test_events_match_schema_and_are_chronological(match):
     assert events[0].type == "period" and events[-1].type == "period"
     times = [e.t for e in events]
     assert times == sorted(times)
-    for e in events:
-        for p in (e.start, e.end):
-            if p is not None:
-                assert -2 <= p.x <= 107 and -2 <= p.y <= 70
+
+
+def test_raw_positions_stay_near_the_pitch(match):
+    # Check the simulator's own state, not the written output (which is clamped and would
+    # hide a player running off to x=500). Players may overrun into the run-off area when
+    # braking from a sprint; the ball is stopped about a metre past the line at most.
+    pos, active = np.stack(match._rec_pos), np.stack(match._rec_active)
+    players = pos[active]
+    assert players[:, 0].min() > -RUN_OFF and players[:, 0].max() < 105 + RUN_OFF
+    assert players[:, 1].min() > -RUN_OFF and players[:, 1].max() < 68 + RUN_OFF
+    ball = np.stack(match._rec_ball)
+    assert ball[:, 0].min() > -1.5 and ball[:, 0].max() < 106.5
+    assert ball[:, 1].min() > -1.5 and ball[:, 1].max() < 69.5
 
 
 def test_tracking_and_meta_match_schema(match):
@@ -82,6 +92,18 @@ def test_scripted_scenario_controls_scoreline():
     goals = [e for e in sim.events if e["type"] == "goal"]
     assert goals[0]["team"] == "home" and goals[0]["t"] >= 3 * 60
     assert goals[1]["team"] == "away" and goals[1]["period"] == 2  # minute 11 of 8-minute halves
+
+
+def test_scripted_minute_after_half_time_is_second_half():
+    # Regression: the first-half clock runs past half_length during stoppage time, which used
+    # to trigger "minute 46" events at 45+1.
+    scenario = Scenario(
+        name="t", events=[ScriptedEvent(SHORT + 0.1, "goal", "home")], scripted_goals_only=True
+    )
+    for seed in range(1, 6):
+        sim = generate_match("ashenford", "greywater", seed, scenario=scenario, half_length=SHORT)
+        goals = [e for e in sim.events if e["type"] == "goal" and e["team"] == "home"]
+        assert goals and all(g["period"] == 2 for g in goals)
 
 
 def test_scripted_red_card_removes_player():

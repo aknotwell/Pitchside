@@ -16,7 +16,7 @@ For the output format (files, schemas, event types), see [DATASET.md](DATASET.md
 | Scenarios | ✅ 4 built-in storylines + custom JSON; scripted goals and red cards with exact scorelines |
 | Determinism | ✅ Same seed + same code version = identical match |
 | Validation | ✅ Per-match plausibility report, and a multi-match batch report against reference averages: **16/16 metrics within tolerance** over 20 matches |
-| Engineering | ✅ CLI (`pitchside-gen match` / `batch`, batch runs in parallel: 20 matches in ~50 s on 10 cores), Makefile, 21 tests, ruff, GitHub Actions CI (read-only token, locked dependencies) |
+| Engineering | ✅ CLI (`pitchside-gen match` / `batch`, batch runs in parallel: 20 matches in ~50 s on 10 cores), Makefile, 23 tests, ruff, GitHub Actions CI (read-only token, locked dependencies) |
 | Input safety | ✅ Scenario files are validated as untrusted input (allowed fields, types, teams, minute range, size limits); CLI rejects out-of-range options |
 
 ## Tuning the generator
@@ -98,6 +98,7 @@ The simulator's probabilities (pass success chance, true xG before outcome) are 
 
 **Tracking artefacts**
 - A few teleports cause speed spikes: a restart taker who hasn't reached the ball after 8 s is moved onto it, a corner's target attacker snaps to the ball for the header, and players reset to kick-off positions at half-time. The validation report caps per-frame movement to ignore these; **the intelligence engine should do the same** (e.g. ignore speeds > 12 m/s).
+- Players braking from a sprint can overrun the touchline or goal line by up to ~7 m (into the run-off area), because deceleration is capped at the same 4.5 m/s² as acceleration. Real players brake harder.
 
 **Tooling**
 - Simulation speed (~10 s per match) is limited by many small per-step numpy operations; simulating both teams in one vectorised pass would be faster but is a larger rewrite.

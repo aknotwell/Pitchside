@@ -58,15 +58,15 @@ def match_stats(sim: MatchSim) -> dict:
 
     fast = (speed >= SPRINT_SPEED) & active
     sprints = 0
-    for k in range(22):
-        if k % 11 == 0:
-            continue
+    for k in np.flatnonzero(~sim.is_gk):
         run = 0
         for v in fast[:, k]:
             run = run + 1 if v else 0
             if run == SPRINT_MIN_FRAMES:
                 sprints += 1
     match_minutes = len(sim._rec_t) / FPS / 60
+    # Per 90 minutes of outfield playing time, so red cards don't skew the average.
+    outfield_minutes = float(active[:, ~sim.is_gk].sum()) / FPS / 60
 
     values = {
         "goals": types["goal"],
@@ -90,7 +90,7 @@ def match_stats(sim: MatchSim) -> dict:
         "score": {"home": sim.score[0], "away": sim.score[1]},
         "possession_home": round(home_passes / max(len(passes), 1), 3),
         "match_minutes": round(match_minutes, 1),
-        "sprints_per_outfield_player_90": round(sprints / 20 / match_minutes * 90, 1),
+        "sprints_per_outfield_player_90": round(sprints / max(outfield_minutes, 1) * 90, 1),
         "pressures": types["pressure"],
         "dribbles": types["dribble"],
         "carries": types["carry"],
