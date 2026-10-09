@@ -1,1 +1,146 @@
-Hehe first commit boiiii, I used terminal for all this, AI aint got nothing on me
+# MatchLens: the live explain layer for football
+
+> **Inside the Game hackathon · Category: Best Azure Cloud Native Integration**
+>
+> **Live demo:** <https://wonderful-field-07003a80f.4.azurestaticapps.net> · **API:** <https://ca-api-bhdr37v3onmcs.thankfulglacier-9473c5b7.eastus2.azurecontainerapps.io/api/health> · **Video (< 2 min):** *coming soon*
+
+Synthetic match events and 10 Hz tracking stream in. Timed, **verified** overlays stream
+out. They explain *why* each moment matters, written differently for an analyst and a
+casual fan, in English, Spanish and Japanese. Under the hood, every hop is an
+event on Azure, every number traces to code-computed evidence, and a killed
+agent resumes exactly where it stopped.
+
+## Judging this? Start here
+
+1. Open the **live demo**. It picks the most recent match.
+2. Toggle **Fan / Analyst** and **EN / ES / 日本語**. Every overlay changes register
+   and language.
+3. Click **Why?** on any overlay to see the evidence pack. The model may only use
+   these numbers; a code verifier rejects anything else.
+4. Open **Producer** → **Start a match**. This launches a new Container Apps Job
+   execution, which plays a live match.
+5. Click **Chaos drill**. The next explanation kills a storyteller replica
+   mid-workflow. Watch the run table: Service Bus redelivers the moment and the
+   Agent Framework workflow **resumes from its Cosmos DB checkpoint** without
+   calling the model again.
+
+## How it works
+
+```mermaid
+flowchart LR
+  SIM[[ACA Job: simulator<br/>events + 10 Hz tracking]] -->|partition key = match| EH[(Event Hubs<br/>match-stream)]
+  EH -->|KEDA: consumer lag| INT[ACA: interpreter<br/>deterministic metrics<br/>+ moment detectors]
+  INT -->|template cues: goals, cards, speed tags| COS[(Cosmos DB<br/>state · cues · moments<br/>checkpoints)]
+  INT -->|moments, session = match| SB[(Service Bus<br/>sessions)]
+  INT -->|2 Hz frames + state| WPS
+  SB -->|KEDA: queue depth| STO[ACA: storyteller<br/>Agent Framework workflow]
+  STO <-->|Responses API, Entra| FDY[Microsoft Foundry<br/>gpt-5-mini → gpt-4.1-mini]
+  STO -->|verified cues| COS
+  COS -->|change feed| FN[Functions Flex<br/>cue publisher]
+  FN --> WPS[Azure Web PubSub<br/>group per match × persona × language]
+  WPS --> WEB[Static Web Apps<br/>overlay player]
+  WEB --> API[ACA: api<br/>FastAPI]
+  API --> COS
+  API -->|start match| SIM
+  INT & STO & API -.->|OpenTelemetry| AI[Application Insights]
+```
+
+| Stage (rule 4.1) | What MatchLens does |
+|---|---|
+| **Ingest** | A seeded simulator (ACA Job) plays a fictional match at 1–30× speed into Event Hubs: passes, carries, pressures, tackles, interceptions, shots with xG and shot speed, fouls, cards, subs, plus 10 Hz tracking of 22 players and the ball |
+| **Interpret** | Deterministic, idempotent metrics: xG, possession, pass accuracy, final-third entries, PPDA (match and rolling), momentum, a control-vs-chaos index, distance, top speed and sprints. A replay gives byte-identical state (tested) |
+| **Explain** | Detectors raise moments (goal, big chance, momentum swing, pressing surge, half time and full time) with an **evidence pack**. An Agent Framework workflow (Editor → Explainer → Verifier → Director) writes the *why* |
+| **Render** | Machine-readable `OverlayCue`s with `display_at_s`, TTL, priority and template, timed against a 10 s broadcast delay so agent latency is invisible. Shown on a live 2D pitch with lower-thirds, player speed tags and recap panels |
+| **Personalize** | Analyst vs casual register, three languages (one non-Latin), all from one structured model call per moment |
+
+### Three latency paths
+
+| Path | Example | Who writes it | Budget |
+|---|---|---|---|
+| Hot | Goal, card, sub, 30 km/h speed tag, shot xG | Interpreter template, no LLM | < 1–3 s |
+| Warm | Momentum swing, pressing surge, big chance | Agent workflow, verified | ~6–10 s, hidden by the broadcast delay |
+| Cold | Half-time and full-time recap | Agent workflow (longer budget) | < 60 s |
+
+## Why it's cloud native
+
+- **Event-driven end to end.** Job → Event Hubs → Container Apps → Service Bus
+  sessions → Container Apps → Cosmos DB change feed → Functions → Web PubSub →
+  browser. No polling anywhere on the hot path.
+- **Scales on the right signal.** KEDA scales the interpreter on **Event Hubs
+  consumer lag** and the storyteller on **Service Bus queue depth**, both
+  authenticated by **managed identity**. Everything scales to zero when idle.
+- **Resilient by design.**
+  - Per-match ordering comes from the partition key and Service Bus sessions.
+  - Consumers are idempotent: deduplicated event ids and deterministic cue ids.
+  - The interpreter snapshots state to Blob before every checkpoint.
+  - The workflow checkpoints to Cosmos and resumes after a crash.
+  - Model calls fall back from gpt-5-mini to gpt-4.1-mini to deterministic
+    localized templates.
+- **Keyless.**
+  - Local auth is **disabled** on Event Hubs, Service Bus, Cosmos DB, Storage,
+    Web PubSub, Foundry and Application Insights.
+  - There is one user-assigned identity per service, with least-privilege roles
+    written in Bicep.
+  - ACR admin is off, and images are pulled by identity.
+- **Automated.** `azd up` builds everything from an empty subscription. CI
+  runs lint, tests, a Bicep build, the web build and an image smoke test. A
+  keyless OIDC deploy workflow is included.
+- **Observable.** OpenTelemetry flows to Application Insights (Entra-auth).
+  Every cue carries the `trace_id` of the simulator second that caused it.
+
+## Hero technologies
+
+| Technology | Where |
+|---|---|
+| Azure Container Apps (+ Jobs, KEDA) | `infra/modules/aca.bicep`: api, interpreter, storyteller and the simulator job |
+| Azure Functions (Flex Consumption) | `functions/cue_publisher`: Cosmos change feed → Web PubSub |
+| Microsoft Foundry | `infra/modules/foundry.bicep`: project with pinned `gpt-5-mini` and `gpt-4.1-mini` deployments |
+| Microsoft Agent Framework 1.21 | `src/matchlens/story/workflow.py`: checkpointed workflow with `CosmosCheckpointStorage` |
+| Azure Cosmos DB (serverless) | State, cues, moments, runs and workflow checkpoints; change feed drives rendering |
+| Azure Event Hubs / Service Bus | Stream backbone / moment queue with sessions |
+| Azure Web PubSub | Live push to browsers, Entra-authorized |
+| Azure Static Web Apps | The overlay player |
+| Application Insights | OpenTelemetry for every service |
+| azd + Bicep, GitHub Actions | One-command deploy, CI, keyless CD |
+
+## Run it
+
+```bash
+# Everything, from an empty subscription
+azd auth login && az login
+azd up                        # provision + deploy (~20 min the first time)
+
+# Core logic, no Azure needed
+uv sync && uv run pytest      # simulator, interpreter, verifier, workflow, crash-resume
+
+# Web player against your deployment
+cd web && echo "VITE_API_URL=$(azd env get-value API_URL)" > .env.local && npm i && npm run dev
+```
+
+## Repo map
+
+```text
+src/matchlens/
+  contracts.py        versioned data contracts (events, tracking, moments, overlay cues)
+  world.py            fictional league, clubs and squads
+  sim/                deterministic event engine + 10 Hz tracking
+  interpret/          incremental metrics, template cues, moment detectors
+  story/              Agent Framework workflow, code verifier, localized templates
+  services/           simulator · interpreter · storyteller · api entrypoints
+functions/cue_publisher/   Cosmos change feed → Web PubSub
+web/                  React overlay player, Why? drawer, producer console
+infra/                Bicep for everything (azd)
+docs/                 competition brief, infra design, research, build log
+```
+
+## Synthetic data, honestly
+
+Every match is generated by our own simulator. The league, clubs, players and
+kits are fictional. No real match data, footage or trademarks are used, and the
+project is not affiliated with any league or club. Simulator parameters are
+hand-set today. The planned `calibrate` job fits them to licensed open data
+(SkillCorner, MIT; IDSSE, CC BY 4.0; Wyscout, CC BY 4.0) and commits only
+aggregates. See [docs/COMPETITION.md](docs/COMPETITION.md).
+
+Overlays labelled **AI** are model-written and code-verified. Overlays labelled
+**Data** are computed directly from events.

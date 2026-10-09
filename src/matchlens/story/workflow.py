@@ -276,7 +276,7 @@ class Storyteller:
                 skipped = out.reason
         info = {"moment_id": moment.moment_id, "kind": moment.kind, "resumed_from": resumed_from,
                 "skipped": skipped, "cues": len(cues), "ms": int(1000 * (time.perf_counter() - t0)),
-                "source": cues[0].source if cues else None}
+                "source": cues[0].source if cues else ("duplicate" if resumed_from else None)}
         return cues, info
 
 

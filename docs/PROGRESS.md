@@ -107,3 +107,69 @@ The product core runs and is tested without Azure: `uv run pytest`, 17 tests.
 Design change: one Event Hub, **`match-stream`**, carries events and tracking
 for a match, keyed by `match_id`. A match then stays ordered on one consumer;
 separate hubs could split a match across replicas.
+
+## Checkpoint 3: deployed to Azure and verified end to end (2026-10-09)
+
+**Live:**
+
+| What | URL |
+|---|---|
+| Web | <https://wonderful-field-07003a80f.4.azurestaticapps.net> |
+| API | <https://ca-api-bhdr37v3onmcs.thankfulglacier-9473c5b7.eastus2.azurecontainerapps.io> (`/api/health`, `/api/matches`) |
+| Resource group | `rg-matchlens-dev` (eastus2); azd env `matchlens-dev` |
+
+**Infrastructure** (`azd provision`, about 15 min the first time, mostly the
+Container Apps environment):
+
+- Foundry project with `gpt-5-mini` (100K TPM) and `gpt-4.1-mini` (50K TPM).
+- Event Hubs Standard (`match-stream`, 4 partitions) and Service Bus Standard
+  (`moments`, sessions).
+- Cosmos DB serverless, Storage (no shared keys), Web PubSub (Free), ACR Basic.
+- Container Apps:
+  - `api` (external)
+  - `interpreter`: KEDA on Event Hubs lag, managed identity
+  - `storyteller`: KEDA on Service Bus depth, managed identity
+  - `job-sim`: manual trigger
+- Functions Flex `cue_publisher`, Static Web Apps, App Insights + Log Analytics
+  (local auth off).
+- Five user-assigned identities with least-privilege roles.
+
+**Verified in the cloud:**
+
+1. `POST /api/matches` starts an ACA Job execution, and the simulator streams
+   into Event Hubs.
+2. The interpreter turns that into Cosmos state, template cues, Service Bus
+   moments and Web PubSub frames/state.
+3. The storyteller runs the Agent Framework workflow on Foundry and writes
+   verified cues to Cosmos.
+4. The change feed triggers the Function, which pushes to Web PubSub and on
+   to the browser.
+5. A WebSocket client saw 573 frames, 120 state updates and 7 cues in 90 s;
+   the browser showed 22 animated players, live stats and the agent recap
+   panel "AI · verified".
+
+**Model quality (gpt-5-mini, minimal reasoning):** 4/4 test moments passed the
+code verifier first time, at 6–14 s each. The model fallback chain was
+exercised: gpt-5-mini timed out on a recap, and gpt-4.1-mini delivered a
+verified recap.
+
+**Chaos drill, verified in the cloud** (06:13:55 → 06:14:11 UTC):
+
+1. Producer → Chaos kills the storyteller replica mid-workflow (`os._exit`).
+2. ACA restarts it.
+3. The Service Bus session is reclaimed.
+4. MAF restores from the Cosmos checkpoint and finishes in **51 ms** with six
+   verified cues, **without calling the model again**.
+
+The run shows as "resumed" in the producer console.
+
+**Fixes found while deploying:**
+
+- KEDA `identity` needs Container Apps API 2025-07-01.
+- Reading an existing app's image needs its own module, or azd hits a
+  circular dependency.
+- The Web PubSub SDK double-encodes `str` payloads, so send dicts.
+- A service-level azd hook didn't run, so the API URL is now injected by a
+  project-level `predeploy` hook.
+- Speed tags fired at kick-off.
+- Shirt numbers had a gap.
