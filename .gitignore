@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Generated data (commit small samples under data/samples/ only)
+data/matches/
+
+# Node
+node_modules/
+dist/
+
+# Env / OS
+.env
+.DS_Store
