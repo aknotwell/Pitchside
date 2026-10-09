@@ -89,6 +89,7 @@ INJURY_RATE = 0.25  # chance a foul leaves a player needing treatment
 INJURY_DELAY = (30, 90)
 
 HELD, FLIGHT, LOOSE, DEAD = "held", "flight", "loose", "dead"
+_PITCH = np.array([L, W])
 
 
 @dataclass
@@ -153,6 +154,10 @@ class MatchSim:
                 self.slot_label.append(slot.position)
                 self._lines.append(slot.line)
         self.slot_line = np.array(self._lines)
+        self._idx = (np.arange(11), np.arange(11, 22))
+        self._is_def = self.slot_line == "def"
+        self._is_mid = self.slot_line == "mid"
+        self._is_att = self.slot_line == "att"
         self.r: dict[str, np.ndarray] = {}
         self._load_ratings()
 
@@ -246,7 +251,7 @@ class MatchSim:
         """Absolute <-> team attacking frame (the transform is its own inverse)."""
         if self.dir[team] == 1:
             return np.asarray(xy, dtype=float)
-        return np.array([L, W]) - xy
+        return _PITCH - xy
 
     to_abs = to_att
 
@@ -255,7 +260,7 @@ class MatchSim:
         return slot // 11
 
     def team_slots(self, team: int) -> np.ndarray:
-        idx = np.arange(team * 11, team * 11 + 11)
+        idx = self._idx[team]
         return idx[self.active[idx]]
 
     # ------------------------------------------------------------------ events
@@ -423,7 +428,7 @@ class MatchSim:
         self.drift += -self.drift * DRIFT_DECAY + self.rng.normal(0, DRIFT_NOISE, (22, 2))
 
         for team in (0, 1):
-            idx = np.arange(team * 11, team * 11 + 11)
+            idx = self._idx[team]
             ball = self.to_att(team, focus)
             ts = self.tac[team]
             in_poss = self.poss_team == team
@@ -442,12 +447,12 @@ class MatchSim:
                 xs[1:] = cx + (xs[1:] - cx) * 0.7
                 ys = 34 + (ys - 34) * 0.7 + (ball[1] - 34) * 0.45
                 # Hold the lines: don't collapse onto the goal line, stay in front of the ball.
-                line = self.slot_line[idx]
-                xs = np.where(line == "def", np.maximum(xs, min(ball[0] - 4, 11.0)), xs)
-                xs = np.where(line == "mid", np.maximum(xs, min(ball[0] - 1, 18.0)), xs)
-                xs = np.where(line == "att", np.maximum(xs, min(ball[0] + 5, 30.0)), xs)
+                bx = float(ball[0])
+                xs = np.where(self._is_def[idx], np.maximum(xs, min(bx - 4, 11.0)), xs)
+                xs = np.where(self._is_mid[idx], np.maximum(xs, min(bx - 1, 18.0)), xs)
+                xs = np.where(self._is_att[idx], np.maximum(xs, min(bx + 5, 30.0)), xs)
 
-            xs[0] = np.clip(3 + 0.1 * ball[0], 2, 18)
+            xs[0] = min(max(3 + 0.1 * float(ball[0]), 2.0), 18.0)
             ys[0] = 34 + (ball[1] - 34) * 0.15
             xs[1:] += self.drift[idx[1:], 0]
             ys[1:] += self.drift[idx[1:], 1]
@@ -460,7 +465,9 @@ class MatchSim:
                     factor[k] = 1.0
                 elif self.t >= until or not in_poss:
                     self.runs.pop(k, None)
-            pts = np.stack([np.clip(xs, 1, L - 1), np.clip(ys, 1, W - 1)], axis=1)
+            pts = np.empty((11, 2))
+            np.minimum(np.maximum(xs, 1.0), L - 1, out=pts[:, 0])
+            np.minimum(np.maximum(ys, 1.0), W - 1, out=pts[:, 1])
             tgt[idx] = self.to_abs(team, pts)
 
         if self.mode != DEAD:

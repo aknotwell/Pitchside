@@ -28,11 +28,13 @@ def match_meta(sim: MatchSim) -> MatchMeta:
 
 def iter_tracking_lines(sim: MatchSim):
     """Yield one JSON line per frame, listing only players on the pitch."""
+    # Lines are built by hand for speed; ids go through json.dumps so they are always escaped.
+    quoted = [[json.dumps(pid) for pid in roster] for roster in sim.rosters]
     for i, t in enumerate(sim._rec_t):
-        roster = sim.rosters[sim._rec_roster[i]]
+        roster = quoted[sim._rec_roster[i]]
         pos, speed, active = sim._rec_pos[i], sim._rec_speed[i], sim._rec_active[i]
         players = ",".join(
-            f'{{"id":"{roster[k]}","x":{pos[k, 0]:.2f},"y":{pos[k, 1]:.2f},"speed":{speed[k]:.2f}}}'
+            f'{{"id":{roster[k]},"x":{pos[k, 0]:.2f},"y":{pos[k, 1]:.2f},"speed":{speed[k]:.2f}}}'
             for k in range(22)
             if active[k]
         )

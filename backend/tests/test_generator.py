@@ -6,7 +6,13 @@ import pytest
 from pitchside.generator import generate_match
 from pitchside.generator import models as m
 from pitchside.generator.output import iter_tracking_lines, match_meta
-from pitchside.generator.scenarios import SCENARIOS, Scenario, ScriptedEvent
+from pitchside.generator.scenarios import (
+    SCENARIOS,
+    Scenario,
+    ScenarioError,
+    ScriptedEvent,
+    load_scenario,
+)
 from pitchside.generator.teams import CLUBS, build_team
 from pitchside.generator.validate import match_stats, single_match_report
 from pitchside.schemas import Event, MatchMeta, TrackingFrame
@@ -105,3 +111,37 @@ def test_probability_models_behave():
     assert m.xt(100, 34) > m.xt(70, 34) > m.xt(30, 34)
     blockers = np.array([[100.0, 34.0], [100.0, 5.0]])
     assert m.cone_blockers(90, 34, blockers) == 1
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"name": "x", "events": [{"minute": 10, "type": "own_goal", "team": "home"}]},
+        {"name": "x", "events": [{"minute": 10, "type": "goal", "team": "neutral"}]},
+        {"name": "x", "events": [{"minute": -5, "type": "goal", "team": "home"}]},
+        {"name": "x", "events": [{"minute": "10", "type": "goal", "team": "home"}]},
+        {"name": "x", "events": [{"minute": 10, "type": "goal"}]},
+        {"name": "x", "events": [{"minute": 10, "type": "goal", "team": "home", "x": 1}]},
+        {"name": "x", "events": [{"minute": 10, "type": "goal", "team": "home"}] * 31},
+        {"name": "x", "unexpected": True},
+        {"events": []},
+        ["not", "an", "object"],
+    ],
+)
+def test_invalid_scenarios_are_rejected(data):
+    with pytest.raises(ScenarioError):
+        Scenario.from_dict(data)
+
+
+def test_scenario_file_loading(tmp_path):
+    good = tmp_path / "good.json"
+    good.write_text(
+        json.dumps({"name": "derby", "events": [{"minute": 89, "type": "goal", "team": "away"}]})
+    )
+    assert load_scenario(str(good)).scripted_goals_only
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    with pytest.raises(ScenarioError):
+        load_scenario(str(bad))
+    with pytest.raises(ScenarioError):
+        load_scenario(str(tmp_path / "missing.json"))

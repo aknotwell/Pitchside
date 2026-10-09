@@ -2,7 +2,7 @@ SEED ?= 42
 HOME_CLUB ?= ashenford
 AWAY_CLUB ?= greywater
 
-.PHONY: setup gen batch test lint fmt
+.PHONY: setup gen batch tune test lint fmt
 
 setup:
 	cd backend && uv sync
@@ -12,6 +12,10 @@ gen:
 
 batch:
 	cd backend && uv run pitchside-gen batch --seeds 1-20 --out ../data/matches/batch
+
+# Try tuning constants without editing code, e.g. make tune ARGS="SHOT_BIAS=-0.03"
+tune:
+	cd backend && uv run python scripts/tune.py $(ARGS)
 
 test:
 	cd backend && uv run pytest -q

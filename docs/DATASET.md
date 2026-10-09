@@ -11,7 +11,7 @@ uv run pitchside-gen match --seed 7 --scenario late-comeback                 # s
 uv run pitchside-gen batch --seeds 1-20                                      # calibration report
 ```
 
-Or from the repo root: `make gen`, `make batch`. A 90-minute match takes about 10–15 s. The same seed always produces the same match.
+Or from the repo root: `make gen`, `make batch`. A 90-minute match takes about 10 s to simulate plus a few seconds to write; `batch` runs matches in parallel on all CPU cores (`--workers N` to limit it). The same seed always produces the same match.
 
 ## How it's made
 
