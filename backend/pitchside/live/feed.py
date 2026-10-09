@@ -25,7 +25,7 @@ class LiveFeed:
     @property
     def t(self) -> float:
         """Match time of the latest frame (seconds since kick-off)."""
-        return self.sim.t
+        return 0.0 if self._frame is None else self.sim._rec_t[self._frame]
 
     def advance_to(self, t: float) -> list[dict]:
         """Simulate up to match time `t` and return the events that are now public.
@@ -66,7 +66,8 @@ class LiveFeed:
         return {
             "t": sim._rec_t[i],
             "period": sim._rec_period[i],
-            "clock": sim.clock(),
+            # Not sim.clock(): after the final frame the simulation clock has moved on a tick.
+            "clock": sim.clock(sim._rec_t[i]),
             "live": bool(sim._rec_live[i]),
             "ball": [round(float(v), 2) for v in sim._rec_ball[i]],
             "players": [

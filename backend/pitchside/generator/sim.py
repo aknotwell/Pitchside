@@ -273,8 +273,9 @@ class MatchSim:
         elapsed = self.t - self.period_start
         return (self.period - 1) * self.half_length + elapsed / 60.0
 
-    def clock(self) -> str:
-        elapsed = self.t - self.period_start
+    def clock(self, t: float | None = None) -> str:
+        """Broadcast clock at match time `t` in the current period (default: now)."""
+        elapsed = (self.t if t is None else t) - self.period_start
         reg = self.half_length * 60
         if elapsed <= reg:
             total = int((self.period - 1) * reg + elapsed)
