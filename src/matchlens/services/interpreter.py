@@ -94,10 +94,26 @@ class InterpreterService:
         log.warning("event hub error (partition %s): %s: %s", pid, type(error).__name__, error)
 
     async def on_partition_initialize(self, partition_context) -> None:
-        log.info("claimed partition %s", partition_context.partition_id)
+        dropped = self.forget_partition(partition_context.partition_id)
+        log.info("claimed partition %s (dropped %d stale in-memory matches)", partition_context.partition_id, dropped)
 
     async def on_partition_close(self, partition_context, reason) -> None:
-        log.info("released partition %s (%s)", partition_context.partition_id, reason)
+        dropped = self.forget_partition(partition_context.partition_id)
+        log.info("released partition %s (%s; dropped %d in-memory matches)", partition_context.partition_id, reason, dropped)
+
+    def forget_partition(self, pid: str) -> int:
+        """Drop in-memory state for every match on a partition we no longer own (or are re-claiming).
+
+        While another replica owned the partition it processed more events and saved newer snapshots.
+        Keeping our old copy would resume from the latest checkpoint with stale state, silently losing
+        everything in between and overwriting the correct state doc. The next event reloads the snapshot.
+        """
+        mids = [mid for mid, p in self.match_partition.items() if p == pid]
+        for mid in mids:
+            self.matches.pop(mid, None)
+            self.match_partition.pop(mid, None)
+        self.last_checkpoint.pop(pid, None)
+        return len(mids)
 
     # ------------------------------------------------------------ snapshots
     def _snapshot_name(self, match_id: str) -> str:
