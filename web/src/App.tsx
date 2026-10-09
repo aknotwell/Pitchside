@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
+import { Choice, Dropdown } from "./components/Dropdown";
+import { isLive, MatchPicker } from "./components/MatchPicker";
 import { Overlay } from "./components/Overlay";
 import { Pitch } from "./components/Pitch";
 import { Ask } from "./components/Ask";
@@ -48,6 +50,7 @@ function AthleteLab({ cam, follow }: { cam: CamMode; follow: string | null }) {
 
 function Main({ params }: { params: URLSearchParams }) {
   const [matches, setMatches] = useState<MatchSummary[]>([]);
+  const [matchesLoaded, setMatchesLoaded] = useState(false);
   const [matchId, setMatchId] = useState<string | null>(params.get("match"));
   const [persona, setPersona] = useState<Persona>((params.get("persona") as Persona) || "casual");
   const [lang, setLang] = useState<Lang>((params.get("lang") as Lang) || "en");
@@ -92,12 +95,17 @@ function Main({ params }: { params: URLSearchParams }) {
     const load = () => api.matches().then((r) => {
       if (!alive) return;
       setMatches(r.matches);
-      setMatchId((cur) => cur ?? (r.matches.find((m) => !m.ended && Date.now() / 1000 - m.updated < 300) ?? r.matches[0])?.id ?? null);
+      setMatchesLoaded(true);
+      setMatchId((cur) => cur ?? r.matches.find(isLive)?.id ?? null);
     }).catch(() => {});
     load();
     const id = setInterval(load, 10000);
     return () => { alive = false; clearInterval(id); };
   }, []);
+
+  useEffect(() => {  // nothing live: open the newest replay, so there's always something to watch
+    if (matchesLoaded && !matchId && !replayId && replays.length) setReplayId(replays[0].matchId);
+  }, [matchesLoaded, matchId, replayId, replays]);
 
   useEffect(() => {
     const q = new URLSearchParams({ ...(replayId ? { replay: replayId } : matchId ? { match: matchId } : {}), persona, lang, view, ...(view === "3d" ? { cam } : {}), ...(follow ? { follow } : {}) });
@@ -108,25 +116,16 @@ function Main({ params }: { params: URLSearchParams }) {
     <div className="app">
       <header>
         <h1>MatchLens <small>live explain layer</small></h1>
-        <select aria-label="Match" value={replayId ? `replay:${replayId}` : matchId ?? ""}
-                onChange={(e) => { const v = e.target.value; if (v.startsWith("replay:")) { setReplayId(v.slice(7)); setReplayPaused(false); } else { setReplayId(null); setMatchId(v || null); } }}>
-          {matches.length === 0 && <option value="">No matches yet</option>}
-          <optgroup label="Live and recent">
-            {matches.map((m) => (
-              <option key={m.id} value={m.id}>{m.home} {m.homeGoals}–{m.awayGoals} {m.away} · {m.ended ? "FT" : m.displayClock}</option>
-            ))}
-          </optgroup>
-          {replays.length > 0 && (
-            <optgroup label="Replays">
-              {replays.map((r) => <option key={r.matchId} value={`replay:${r.matchId}`}>▶ {r.home} {r.score?.h}–{r.score?.a} {r.away}</option>)}
-            </optgroup>
-          )}
-        </select>
+        <MatchPicker matches={matches} replays={replays} matchId={matchId} replayId={replayId}
+                     onMatch={(id) => { setReplayId(null); setMatchId(id); }}
+                     onReplay={(id) => { setReplayId(id); setReplayPaused(false); }} />
         {replayId && (
           <>
-            <select aria-label="Replay speed" value={replaySpeed} onChange={(e) => setReplaySpeed(Number(e.target.value))}>
-              {[1, 4, 10, 20].map((s) => <option key={s} value={s}>{s}× replay</option>)}
-            </select>
+            <Dropdown label={`${replaySpeed}× replay`} ariaLabel="Replay speed">
+              {(close) => [1, 4, 10, 20].map((s) => (
+                <Choice key={s} on={s === replaySpeed} onPick={() => { setReplaySpeed(s); close(); }}>{s}× replay</Choice>
+              ))}
+            </Dropdown>
             <button aria-label={replayPaused ? "Play replay" : "Pause replay"} title="Space" onClick={() => setReplayPaused((p) => !p)}>
               {replayPaused ? <><span aria-hidden="true">▶</span> Play</> : <><span aria-hidden="true">❚❚</span> Pause</>}
             </button>
