@@ -604,3 +604,37 @@ Against typical match values:
 | Clearances per match | 36 | 40 |
 | Shots from outside the box | 39% | 38% |
 | Headers, share of shots | 12% | 17% |
+
+## Checkpoint 14: crossing, duels and pace (2026-10-09)
+
+- **Crossing:** wide players with good crossing look for the box (`cross_bias`). That
+  brings headed chances to a realistic share.
+- **On the ball:** players are slightly longer on the ball and carry it a little more,
+  so passes per match match the real data.
+- **Duels:** fewer tackles attempted, keeping tackles won at a typical level.
+
+On 64 held-out matches, every SkillCorner measure is within 5%:
+
+| Measure | Now | Real |
+|---|---|---|
+| Passes per match | 840 | 804 |
+| Pass completion | 82.0% | 83.4% |
+| Shots per match | 25.4 | 26.3 |
+| Mean pass length | 15.5 m | 16.3 m |
+| Distance per 90 | 10.44 km | 10.30 km |
+| Peak speed | 27.1 km/h | 28.3 km/h |
+| Sprints per 90 | 8.6 | 8.5 |
+
+Against typical match values:
+
+| Measure | Now | Typical |
+|---|---|---|
+| Goals per match | 2.7 | 2.8 |
+| Fouls per match | 24 | 23 |
+| Yellow cards per match | 3.9 | 3.8 |
+| Tackles won per match | 40 | 38 |
+| Throw-ins per match | 40 | 40 |
+| Ball in play | 59% | 57% |
+| Headers, share of shots | 20% | 17% |
+| Clearances per match | 35 | 40 |
+| Shots from outside the box | 37% | 38% |

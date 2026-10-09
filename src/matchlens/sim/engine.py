@@ -850,6 +850,8 @@ class MatchEngine:
                       + 0.012 * (1 - sty["directness"]) * p_succ[n]
                       + (0.006 * flair if kind == "through" else 0.0))
                 u_ -= p["long_pass_cost"] * max(0.0, L[n] - 25.0) / 10.0 * (1.3 - vision)  # long balls: harder, slower, riskier
+                if cross[n]:  # wide players who can cross look for the box
+                    u_ += p["cross_bias"] * tr["crossing"][i]
                 u_ += rng.normal(0, 0.006 * (1.4 - vision))  # imperfect reading of the picture
                 utils.append(float(u_))
                 k_ = "cross" if cross[n] else ("through" if kind == "through" else
