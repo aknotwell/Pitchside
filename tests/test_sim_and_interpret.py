@@ -6,7 +6,7 @@ import pytest
 
 from matchlens.contracts import StreamMessage
 from matchlens.interpret.state import MatchInterpreter
-from matchlens.sim.engine import MatchEngine, simulate
+from matchlens.sim.engine import BOX_X, BOX_Y, MatchEngine, outside_box, simulate
 
 SHORT = {"period_min": 8}
 
@@ -106,6 +106,54 @@ def test_ball_carrier_is_engaged_in_open_play(logged):
     near = np.array(near)
     assert np.median(near) < 6.0
     assert (near > 12).mean() < 0.1
+
+
+def test_outside_box_moves_points_to_the_nearest_edge():
+    pts = np.array([[50.0, 0.0], [37.0, 5.0], [45.0, 19.0], [30.0, 0.0], [-50.0, 0.0]])
+    out = outside_box(pts, 1.0)
+    assert out[0].tolist() == [BOX_X, 0.0]  # deep in the box: out through the front edge
+    assert out[1].tolist() == [BOX_X, 5.0]
+    assert out[2].tolist() == [45.0, BOX_Y]  # near the side edge: out sideways
+    assert out[3].tolist() == [30.0, 0.0] and out[4].tolist() == [-50.0, 0.0]  # already outside / other end
+    assert outside_box(pts, -1.0)[4].tolist() == [-BOX_X, 0.0]
+
+
+class _GoalKickLog(MatchEngine):
+    """Records, for every tick a goal kick is not yet kicked, whether an opponent is in that penalty area."""
+
+    def _step(self, t):
+        super()._step(t)
+        side = self._goal_kick_side()
+        if side is None or self.state != "owned":
+            return
+        opp = self.ts["a" if self.poss == "h" else "h"].A
+        self.violations += int((outside_box(self.pos[opp], side) != self.pos[opp]).any())
+
+    def _gain(self, i, t, setpiece=None, how=None):
+        if setpiece == "goal_kick":  # the restart is taken now
+            opp = self.ts["a" if self.tid_of[i] == "h" else "h"].A
+            mates = [j for j in self.ts[self.tid_of[i]].A if j != i]
+            side = 1.0 if self.ball[0] > 0 else -1.0
+            self.kicks += 1
+            self.violations += int((outside_box(self.pos[opp], side) != self.pos[opp]).any())
+            self.mates_in_box += int((outside_box(self.pos[mates], side) != self.pos[mates]).any(axis=1).sum())
+        super()._gain(i, t, setpiece=setpiece, how=how)
+
+
+def test_no_opponent_in_the_box_at_a_goal_kick():
+    """Hard rule: from the restart until the keeper kicks it, every opponent is outside the penalty area.
+    The keeper's own team may stay in it (and usually does, to take a short goal kick)."""
+    kicks = violations = mates_in_box = 0
+    for seed in (11, 12, 13):
+        eng = _GoalKickLog(seed, params={"period_min": 15})
+        eng.kicks = eng.violations = eng.mates_in_box = 0
+        eng.run()
+        kicks += eng.kicks
+        violations += eng.violations
+        mates_in_box += eng.mates_in_box
+    assert kicks >= 5
+    assert violations == 0
+    assert mates_in_box >= kicks  # on average at least one teammate in the box per goal kick
 
 
 def test_top_speeds_are_human(short_match):
