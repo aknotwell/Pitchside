@@ -72,6 +72,20 @@ def other(team: str) -> str:
     return "a" if team == "h" else "h"
 
 
+def outside_box(xy: np.ndarray, side: float, margin: float = 0.0) -> np.ndarray:
+    """Move points out of the penalty area at the ``side`` (+1/-1) end, each to its nearest edge
+    (front or side) plus ``margin``. Points already outside are unchanged."""
+    out = xy.copy()
+    depth = side * out[:, 0] - (BOX_X - margin)  # how far past the front edge
+    lateral = BOX_Y + margin - np.abs(out[:, 1])  # how far inside the side edge
+    inside = (depth > 0) & (lateral > 0)
+    front = inside & (depth <= lateral)
+    out[front, 0] = side * (BOX_X - margin)
+    wide = inside & ~front
+    out[wide, 1] = np.where(out[wide, 1] < 0, -1.0, 1.0) * (BOX_Y + margin)
+    return out
+
+
 def sigmoid(z: float) -> float:
     return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, z))))
 
@@ -495,11 +509,27 @@ class MatchEngine:
             return
         if d > 1.5:  # out of patience: the taker is placed on the ball
             self.pos[r.taker] = r.spot - np.array([SIGN[r.team] * 0.6, 0.0])
+        if r.kind == "goal_kick":  # law 16: no opponent in the penalty area when the kick is taken
+            Opp = self.ts[other(r.team)].A
+            clear = outside_box(self.pos[Opp], math.copysign(1.0, r.spot[0]))
+            if not np.array_equal(clear, self.pos[Opp]):
+                if t < r.ready_t + 6.0:
+                    return
+                self.pos[Opp] = clear  # out of patience: stragglers are placed on the edge of the box
         self.ball[:2] = r.spot
         self.ball[2] = 0.0
         self.restart = None
         self.sp_kind, self.sp_until = r.kind, (t + 3.0 if r.kind in ("corner", "penalty") else t)
         self._gain(r.taker, t, setpiece=r.kind)
+
+    def _goal_kick_side(self) -> float | None:
+        """While a goal kick has not been kicked yet (ball dead, or on the keeper's foot after the
+        restart), the end (+1/-1) whose penalty area opponents must stay out of; otherwise None."""
+        if self.state == DEAD and self.restart is not None and self.restart.kind == "goal_kick":
+            return math.copysign(1.0, self.restart.spot[0])
+        if self.state == OWNED and self.setpiece == "goal_kick":
+            return math.copysign(1.0, self.ball[0])
+        return None
 
     def _schedule_subs(self, t0: float) -> None:
         for tid in TEAMS:
@@ -1366,6 +1396,12 @@ class MatchEngine:
                 v = tgt[Opp] - r.spot
                 dist = np.linalg.norm(v, axis=1) + 1e-6
                 tgt[Opp] = np.where((dist < 9.5)[:, None], r.spot + v / dist[:, None] * 9.5, tgt[Opp])
+        side = self._goal_kick_side()
+        if side is not None:  # goal kick: opponents leave the box (and hurry if they are still in it)
+            Opp = self.ts[other(self.poss)].A
+            tgt[Opp] = outside_box(tgt[Opp], side, margin=1.5)
+            in_box = (outside_box(self.pos[Opp], side) != self.pos[Opp]).any(axis=1)
+            urgent[Opp] = np.where(in_box, np.maximum(urgent[Opp], 0.6), urgent[Opp])
         return tgt, urgent
 
     def _support(self, t, tid, A, Opp, running) -> dict[int, np.ndarray]:
@@ -1537,6 +1573,10 @@ class MatchEngine:
         np.clip(pos[:, 1], -HALF_WIDTH - 2, HALF_WIDTH + 2, out=pos[:, 1])
         self.pos[A] = pos
         self.vel[A] = vel
+        if self.state == OWNED and (side := self._goal_kick_side()) is not None:
+            # The box was cleared before the restart; nobody steps back in until the ball is kicked.
+            Opp = self.ts[other(self.poss)].A
+            self.pos[Opp] = outside_box(self.pos[Opp], side)
 
     def _ball_step(self, t: float) -> None:
         dt = self.dt
