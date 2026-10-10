@@ -148,17 +148,81 @@ flowchart LR
 
 ## Run it
 
+### Web player on your machine (no Azure account needed)
+
+The quickest way to work on the UI. Vite serves the player from your checkout and
+forwards every `/api` call to the team's shared deployment, so live matches,
+replays, Ask and Producer all work. Needs Node 22.
+
 ```bash
-# Everything, from an empty subscription
+make install       # uv sync + npm ci (once, and after package.json changes)
+make web-remote    # Vite, proxied to the team's API
+```
+
+Open <http://localhost:5173>. Changes under `web/src` reload instantly; stop the
+server with `Ctrl+C`.
+
+- **Restart it** after `git pull` or switching branch when `package.json`
+  changed (run `make install` first). Plain code changes reload on their own.
+- **Port 5173 in use?** Something else (often an old dev server) holds it:
+  `lsof -iTCP:5173 -sTCP:LISTEN` shows what.
+- **Remove `web/.env.local`** if you have one. A `VITE_API_URL` in it overrides
+  the proxy.
+- **Costs:** the backend is the team's subscription. Replays are close to free;
+  **Producer → Start a match** and **Ask** use compute and model tokens. Start one
+  short match, not a batch.
+
+Backend changes (Python, Functions, infra) only show up here after they are
+merged and deployed. To try API changes before that, run the API locally (next
+section).
+
+### API on your machine against a deployment
+
+Runs the FastAPI service from your checkout on `:8000`, talking to a deployment's
+Cosmos DB, Web PubSub and Storage with your `az login`, and points Vite at it.
+Needs a deployment where your account has data-plane roles (`azd up` grants them
+to whoever runs it).
+
+```bash
+az login
+make dev           # API on :8000 + Vite on :5173; Ctrl+C stops both
+```
+
+The first run copies the deployed API container app's settings into
+`.azure/backend.env` (gitignored). It picks the first `ca-api-*` app in your
+current `az` subscription; choose another with
+`make clean-env && make env API_APP=ca-api-xxxx API_RG=rg-xxxx`. The managed
+identity id and Application Insights connection string are left out, so you
+authenticate as yourself and local requests stay out of the deployment's
+telemetry.
+
+Only the API runs locally. The simulator, interpreter, storyteller and Functions
+stay in Azure, so if that deployment has no simulator job, the match list stays
+empty. Run `make` to list every target.
+
+### Tests (no Azure needed)
+
+```bash
+make test          # uv run pytest + the web player's Vitest suite
+```
+
+`uv run pytest` covers the simulator, interpreter, verifier, workflow and
+crash-resume; `cd web && npm test` covers replay clock and playback, frame
+interpolation and the live-match filter.
+
+### Your own deployment
+
+```bash
 azd auth login && az login
 azd up                        # provision + deploy (~20 min the first time)
 
-# Core logic, no Azure needed
-uv sync && uv run pytest      # simulator, interpreter, verifier, workflow, crash-resume
-
-# Web player against your deployment
-cd web && echo "VITE_API_URL=$(azd env get-value API_URL)" > .env.local && npm i && npm run dev
+# Web player against it (its API accepts http://localhost:5173)
+make web-remote REMOTE_API=$(azd env get-value API_URL)
 ```
+
+On a subscription whose region policy blocks every Static Web Apps region
+(e.g. Azure for Students), run `azd env set DEPLOY_WEB false` first and use the
+web player locally as above.
 
 ## Repo map
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { API } from "./api";
 import type { Live } from "./live";
+import { type Anchor, playheadAt as advance, rebase, scoreboardAt } from "./playback";
 import { sampleFrames } from "./sample";
 import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona, TeamSummary } from "./types";
 
@@ -25,11 +26,12 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
   // so it lives here rather than in the playback effect's dependencies.
   const vclock = useRef<{ offset: number; pausedAt: number | null }>({ offset: 0, pausedAt: null });
   const vt = (now: number) => (vclock.current.pausedAt ?? now) - vclock.current.offset;
-  // Playhead anchor: at playback time `wall` the replay was at match time `t0`, moving at `speed`.
-  const start = useRef<{ wall: number; t0: number; speed: number }>({ wall: 0, t0: 0, speed });
+  const start = useRef<Anchor>({ wall: 0, t0: 0, speed });
   const shownAt = useRef<Map<string, number>>(new Map());
   const finalRef = useRef<MatchState | null>(finalState);
   finalRef.current = finalState;  // read inside the loop; changing it must not restart playback
+  const view = useRef({ persona, lang });
+  view.current = { persona, lang };  // same: switching viewer or language carries on from the current moment
   const frames = useRef<Frame[]>([]);
   const sampler = useRef<() => Frame | null>(() => null);
   const sample = useRef(() => sampler.current()).current;
@@ -45,8 +47,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
   useEffect(() => {  // a new speed carries on from the current position instead of restarting
     const s = start.current;
     if (s.speed === speed) return;
-    const now = vt(performance.now() / 1000);
-    start.current = { wall: now, t0: s.t0 + (now - s.wall) * s.speed, speed };
+    start.current = rebase(s, vt(performance.now() / 1000), speed);
   }, [speed]);
 
   useEffect(() => {
@@ -70,7 +71,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       const now = vt(wall);
       const end = p.frames[p.frames.length - 1][0];
       const s = start.current;
-      let playhead = s.t0 + (now - s.wall) * s.speed;
+      let playhead = advance(s, now);
       if (playhead > end + 20) { start.current = { ...s, wall: now, t0: p.frames[0][0] }; shownAt.current = new Map(); playhead = p.frames[0][0]; }
       return playhead;
     };
@@ -90,14 +91,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       const playhead = playheadAt(nowMs / 1000)!;
       const now = vt(nowMs / 1000);  // cue lifetimes stand still while paused
       const frame = sampleFrames(frames.current, playhead)!;
-      // scoreboard from events
-      let h = 0, aw = 0, clock = "00:00", period = 1;
-      for (const e of p.events) {
-        if (e.clock_s > playhead) break;
-        if (e.type === "shot" && e.outcome === "goal") { if (e.team_id === "h") h++; else aw++; }
-        if (e.display_clock) clock = e.display_clock;
-        period = e.period;
-      }
+      const { home: h, away: aw, period, clock } = scoreboardAt(p.events, playhead, p.meta.period_min ?? 45);
       const fs = finalRef.current;
       const base = fs && fs.id === p.matchId ? fs : null;
       const state: MatchState = base
@@ -105,10 +99,13 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
         : { id: p.matchId, clockS: playhead, displayClock: clock, period, ended: false, home: team(p.meta, "home", h), away: team(p.meta, "away", aw),
             possessionHome: 0.5, momentum: 0, controlChaos: 0, topSpeeds: [], meta: p.meta };
       const active: Cue[] = [], history: Cue[] = [];
+      const { persona, lang } = view.current;
       for (const c of p.cues) {
-        if (!(c.persona === persona || c.persona === "all") || !(c.lang === lang || c.lang === "all")) continue;
         if (c.display_at_s > playhead) continue;
+        // Stamp every viewer/language variant as it airs, so after a switch the new view's copy of a
+        // moment keeps its real air time: what is up stays up, and nothing already gone comes back.
         if (!shownAt.current.has(c.id)) shownAt.current.set(c.id, now);
+        if (!(c.persona === persona || c.persona === "all") || !(c.lang === lang || c.lang === "all")) continue;
         history.push(c);
         if (now - (shownAt.current.get(c.id) ?? 0) < c.ttl_s) active.push(c);
       }
@@ -118,7 +115,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
     };
     raf = requestAnimationFrame(tick);
     return () => { stopped = true; cancelAnimationFrame(raf); sampler.current = () => null; };
-  }, [matchId, persona, lang]);
+  }, [matchId]);
 
   return live;
 }

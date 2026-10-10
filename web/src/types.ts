@@ -39,7 +39,7 @@ export interface Team {
   id: string; name: string; short: string; color: string; formation: string; players: Player[];
   style_name?: string; style?: Record<string, number>;
 }
-export interface MatchMeta { match_id: string; home: Team; away: Team; seed: number; params_version: string; competition: string }
+export interface MatchMeta { match_id: string; home: Team; away: Team; seed: number; params_version: string; competition: string; period_min?: number }
 
 export interface MatchSummary {
   id: string; displayClock: string; ended: boolean; home: string; away: string;
