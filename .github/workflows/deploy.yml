@@ -1,13 +1,35 @@
-# Keyless deploy with azd. Configure once with `azd pipeline config` (creates the federated
-# credential and the AZURE_* repository variables). No secrets are stored.
+# Keyless continuous deployment with azd: every green CI run on main deploys to production.
+#
+# One-time setup (by the owner of the production subscription, from a checkout with the
+# production azd environment selected):
+#   azd pipeline config --provider github
+# That creates the federated credential and the AZURE_* repository variables. Then store the
+# production azd environment so CI provisions with the same settings (demo mode, Web PubSub
+# SKU, image-exists flags...):
+#   gh secret set AZD_INITIAL_ENVIRONMENT_CONFIG < .azure/<env>/.env
+# and run this workflow once by hand with "provision" ticked, which also gives the pipeline's
+# identity the data-plane roles the evaluation gate needs. No passwords or keys are stored.
 name: deploy
 on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      provision:
+        description: "Run azd provision (infrastructure) before deploying"
+        type: boolean
+        default: false
 permissions:
   id-token: write
   contents: read
+concurrency:  # one deploy at a time; a newer commit waits rather than cancelling one mid-rollout
+  group: deploy-production
+  cancel-in-progress: false
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     env:
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
@@ -15,24 +37,61 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_PRINCIPAL_TYPE: ServicePrincipal
+      AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}  # the commit CI tested, not a newer one
+          fetch-depth: 2
+      - name: What changed
+        id: changes
+        run: |
+          files=$(git diff --name-only HEAD^ HEAD 2>/dev/null || echo "infra/")
+          echo "$files"
+          code=false; infra=false
+          if echo "$files" | grep -qvE '^(docs/|.*\.md$|\.claude/|\.vscode/|tests/|web/src/.*\.test\.ts$|Makefile$)'; then code=true; fi
+          if echo "$files" | grep -qE '^(infra/|azure\.yaml$)'; then infra=true; fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then code=true; fi
+          if [ "${{ inputs.provision }}" = "true" ]; then infra=true; fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "infra=$infra" >> "$GITHUB_OUTPUT"
+          echo "deploy: $code, provision: $infra"
       - uses: Azure/setup-azd@v2
+        if: steps.changes.outputs.code == 'true'
       - uses: azure/login@v2
+        if: steps.changes.outputs.code == 'true'
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: azd login (federated)
+        if: steps.changes.outputs.code == 'true'
         run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider github --tenant-id "$AZURE_TENANT_ID"
-      - run: azd provision --no-prompt
-      - run: azd deploy --no-prompt
+      - name: Provision (infrastructure changed)
+        if: steps.changes.outputs.code == 'true' && steps.changes.outputs.infra == 'true'
+        run: |
+          if [ -z "$AZD_INITIAL_ENVIRONMENT_CONFIG" ]; then
+            echo "::error::AZD_INITIAL_ENVIRONMENT_CONFIG is not set; provisioning without it would reset production settings. See the setup notes at the top of this file."
+            exit 1
+          fi
+          azd provision --no-prompt
+      - name: Load outputs of the last provision (infrastructure unchanged)
+        if: steps.changes.outputs.code == 'true' && steps.changes.outputs.infra != 'true'
+        run: azd env refresh --no-prompt
       - uses: astral-sh/setup-uv@v6
+        if: steps.changes.outputs.code == 'true'
         with:
           python-version: "3.13"
-      - name: Evaluation gate (Foundry evaluators + code verifier)
+      - name: Evaluation gate (runs the new storyteller against Foundry before anything ships)
+        if: steps.changes.outputs.code == 'true'
         run: uv sync --frozen && uv run python scripts/evaluate.py --seeds 501 502 --max-moments 8
+      - name: Deploy
+        if: steps.changes.outputs.code == 'true'
+        run: azd deploy --no-prompt
       - name: Smoke test
+        if: steps.changes.outputs.code == 'true'
         run: |
           API_URL=$(azd env get-value API_URL)
-          curl -fsS "$API_URL/api/health"
+          for _ in 1 2 3 4 5 6; do curl -fsS "$API_URL/api/health" && exit 0; sleep 10; done
+          exit 1

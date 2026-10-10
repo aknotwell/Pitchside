@@ -100,8 +100,9 @@ flowchart LR
     written in Bicep.
   - ACR admin is off, and images are pulled by identity.
 - **Automated.** `azd up` builds everything from an empty subscription. CI
-  runs lint, tests, a Bicep build, the web build and an image smoke test. A
-  keyless OIDC deploy workflow is included.
+  runs lint, tests, a Bicep build, the web build and an image smoke test.
+  Every green CI run on `main` deploys to production through a keyless (OIDC)
+  workflow, after an evaluation gate.
 - **Observable.** OpenTelemetry flows to Application Insights (Entra-auth).
   Every cue carries the `trace_id` of the simulator second that caused it.
   There is a multi-region availability test with an alert, and an
@@ -223,6 +224,29 @@ make web-remote REMOTE_API=$(azd env get-value API_URL)
 On a subscription whose region policy blocks every Static Web Apps region
 (e.g. Azure for Students), run `azd env set DEPLOY_WEB false` first and use the
 web player locally as above.
+
+### Continuous deployment to production
+
+[`deploy.yml`](.github/workflows/deploy.yml) runs after every green CI run on
+`main`. It runs the evaluation gate first, then deploys with `azd deploy`.
+`azd provision` runs only when `infra/` or `azure.yaml` changed (or when the
+workflow is run by hand with **provision** ticked). Changes that touch only docs,
+tests or the Makefile don't deploy. Only new matches use new engine code.
+
+One-time setup, by the owner of the production subscription, from a checkout with
+the production azd environment selected:
+
+```bash
+azd pipeline config --provider github
+```
+
+```bash
+gh secret set AZD_INITIAL_ENVIRONMENT_CONFIG < .azure/<env>/.env
+```
+
+Then run the **deploy** workflow once by hand with **provision** ticked. That
+gives the pipeline's identity the roles the evaluation gate needs. Without the
+secret, CI refuses to provision rather than reset production settings to defaults.
 
 ## Repo map
 
