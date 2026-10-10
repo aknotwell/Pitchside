@@ -238,7 +238,8 @@ class MatchEngine:
                 slot_pos=[pos for pos, _, _ in form],
                 anchors=np.array([(ax, ay) for _, ax, ay in form]),
                 style=dict(team.style) or {"press": 0.5, "line": 0.5, "width": 0.55, "tempo": 1.0, "directness": 0.45},
-                strength=1.0 + float(self.rng.normal(0, self.p["strength_sd"])),
+                strength=(1.0 + float(self.rng.normal(0, self.p["strength_sd"])))
+                * (1.0 + (self.p["home_advantage"] if tid == "h" else -self.p["home_advantage"]) * 0.25),
                 bench=[self.idx[pl.id] for pl in team.players[11:]],
             )
             self.ts[tid] = st
@@ -995,7 +996,8 @@ class MatchEngine:
         xg = round(min(0.95, float(xg)), 3)
         skill = self.tr["finishing"][i] if dist < 18 else 0.5 * (self.tr["finishing"][i] + self.tr["long_shots"][i])
         gk = self._gk(opp)
-        p_goal = min(0.97, xg * (0.75 + 0.5 * skill) * (1.2 - 0.4 * self.tr["reflexes"][gk]))
+        home = self.p["home_advantage"] if tid == "h" else -self.p["home_advantage"]  # crowd, familiarity, travel
+        p_goal = min(0.97, xg * (0.75 + 0.5 * skill) * (1.2 - 0.4 * self.tr["reflexes"][gk]) * (1.0 + home))
         if header:
             speed_kmh = rng.uniform(35, 65)
         else:

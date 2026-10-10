@@ -90,6 +90,7 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "urgent_min_gap_m": 3.0,
     # Team strength and scripted stories
     "strength_sd": 0.03,
+    "home_advantage": 0.0,  # home finishing edge (and a quarter of it in passing); away side loses the same
     "script": [
         {"from_min": 55, "to_min": 72, "team": "a", "press": 0.45, "tempo": 0.15, "label": "away high press"},
     ],

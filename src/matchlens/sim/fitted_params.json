@@ -1,6 +1,6 @@
 {
- "params_version": "fit-skillcorner-agents-3f357d4d24",
- "fitted_at": "2026-10-09T22:14:23Z",
+ "params_version": "fit-skillcorner-agents-f3bd95b62c",
+ "fitted_at": "2026-10-10T00:18:46Z",
  "source": "SkillCorner Open Data (github.com/SkillCorner/opendata), MIT licence",
  "targets": {
   "events": {
@@ -52,22 +52,22 @@
   "outside_box_shot_share": 0.38
  },
  "held_out": {
-  "passes_per_match": 839.7656,
-  "pass_completion": 0.8196,
-  "shots_per_match": 25.4062,
-  "pass_length_mean_m": 15.4617,
-  "distance_km_per90_median": 10.4375,
-  "psv99_kmh_median": 27.1021,
-  "sprints_per90_median": 8.5728,
-  "goals_per_match": 2.6719,
-  "fouls_per_match": 23.5781,
-  "cards_per_match": 3.8906,
-  "tackles_won_per_match": 40.125,
-  "throw_ins_per_match": 39.8906,
-  "ball_in_play_share": 0.5944,
-  "header_share_of_shots": 0.1993,
-  "clearances_per_match": 35.4844,
-  "outside_box_shot_share": 0.3745
+  "passes_per_match": 823.3594,
+  "pass_completion": 0.8245,
+  "shots_per_match": 26.6719,
+  "pass_length_mean_m": 15.6448,
+  "distance_km_per90_median": 10.3908,
+  "psv99_kmh_median": 27.3084,
+  "sprints_per90_median": 8.5751,
+  "goals_per_match": 1.9688,
+  "fouls_per_match": 24.5625,
+  "cards_per_match": 3.7031,
+  "tackles_won_per_match": 40.5938,
+  "throw_ins_per_match": 39.7969,
+  "ball_in_play_share": 0.5912,
+  "header_share_of_shots": 0.2056,
+  "clearances_per_match": 35.5781,
+  "outside_box_shot_share": 0.3726
  },
  "params": {
   "version": "fit-skillcorner-agents",
@@ -86,7 +86,7 @@
   "carry_keep_logit": 0.875,
   "pass_value_discount": 1.4,
   "carry_value_discount": 0.75,
-  "shot_bias": 0.5,
+  "shot_bias": 0.53,
   "shot_max_dist_m": 30.0,
   "long_shot_pref": 0.08,
   "box_space_shot_bonus": 0.05,
@@ -99,7 +99,7 @@
   "clear_value": 0.015,
   "clear_cost": 0.01,
   "long_pass_cost": 0.025,
-  "cross_bias": 0.008,
+  "cross_bias": 0.006,
   "close_while_travel": 0.3,
   "support_m": [
    6.0,
@@ -132,7 +132,7 @@
   "header_chance": 0.95,
   "foul_share_of_tackles": 0.37,
   "card_share_of_fouls": 0.14,
-  "xg_a": -1.01,
+  "xg_a": -1.06,
   "xg_b": -0.16,
   "xg_c": 1.6,
   "shot_outcome_split": {
@@ -197,6 +197,7 @@
   "jog_max_mps": 4.625,
   "hard_run_mps": 6.6,
   "urgent_min_gap_m": 3.0,
-  "strength_sd": 0.03
+  "strength_sd": 0.03,
+  "home_advantage": 0.12
  }
 }
