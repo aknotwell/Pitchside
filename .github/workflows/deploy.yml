@@ -2,9 +2,10 @@
 # Keyless: GitHub OIDC -> user-assigned managed identity id-github-deploy in rg-matchlens-dev,
 # federated on repo:aknotwell/Pitchside:ref:refs/heads/main. The IDs below are not secrets.
 #
-# Deploy only. Infra changes (infra/**) still need a manual `azd provision` from a machine
-# with the full azd env: provisioning from a fresh CI env would reset parameters such as
-# WEBPUBSUB_SKU and SERVICE_*_RESOURCE_EXISTS (which puts the apps back on placeholder images).
+# The identity is Owner on the subscription so it can also run `azd provision`, which happens
+# when a push changes infra/ or azure.yaml (or on a manual run with "provision" ticked).
+# The CI azd env starts empty, so the Bicep parameters of the live environment are pinned
+# below; change them here, not with `azd env set` on a laptop.
 name: deploy
 on:
   push:
@@ -15,6 +16,11 @@ on:
       - "tests/**"
       - ".vscode/**"
   workflow_dispatch:
+    inputs:
+      provision:
+        description: Run azd provision before deploying
+        type: boolean
+        default: false
 permissions:
   id-token: write
   contents: read
@@ -31,8 +37,32 @@ jobs:
       AZURE_SUBSCRIPTION_ID: cbb2ef3b-ed42-4e42-9c51-99e5895ece87
       AZURE_ENV_NAME: matchlens-dev
       AZURE_LOCATION: eastus2
+      # Bicep parameters (infra/main.parameters.json) of the live environment.
+      AZURE_PRINCIPAL_ID: bb4de62a-18ef-406b-8830-1a6cf085a81c  # vmoose@outlook.com keeps data access
+      AZURE_PRINCIPAL_TYPE: User
+      WEBPUBSUB_SKU: Standard_S1
+      ALERT_EMAIL: vmoose@outlook.com
+      DEMO_MODE: "false"
+      SERVICE_API_RESOURCE_EXISTS: "true"  # keep the deployed images instead of the placeholder
+      SERVICE_INTERPRETER_RESOURCE_EXISTS: "true"
+      SERVICE_STORYTELLER_RESOURCE_EXISTS: "true"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Did the infrastructure change?
+        id: infra
+        env:
+          BEFORE: ${{ github.event.before }}
+          FORCE: ${{ inputs.provision }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            CHANGED=$FORCE
+          elif ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+             || git diff --name-only "$BEFORE" HEAD -- infra azure.yaml | grep -q .; then
+            CHANGED=true
+          fi
+          echo "provision=${CHANGED:-false}" >> "$GITHUB_OUTPUT"
       - uses: Azure/setup-azd@v2
       - uses: actions/setup-node@v4
         with:
@@ -48,10 +78,14 @@ jobs:
         run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider github --tenant-id "$AZURE_TENANT_ID"
       - name: Load the azd environment from the resource group
         # Every name derives from the resource token in main.bicep, so read it off the registry
-        # (crTOKEN) instead of the subscription-scope deployment the RG-scoped identity can't see.
+        # (crTOKEN). A provision below overwrites these with its outputs.
         run: |
           RG=rg-matchlens-dev
           azd env new "$AZURE_ENV_NAME" --subscription "$AZURE_SUBSCRIPTION_ID" --location "$AZURE_LOCATION" --no-prompt
+          for v in AZURE_PRINCIPAL_ID AZURE_PRINCIPAL_TYPE WEBPUBSUB_SKU ALERT_EMAIL DEMO_MODE \
+                   SERVICE_API_RESOURCE_EXISTS SERVICE_INTERPRETER_RESOURCE_EXISTS SERVICE_STORYTELLER_RESOURCE_EXISTS; do
+            azd env set "$v" "$(printenv "$v")"
+          done
           ACR=$(az acr list -g "$RG" --query "[0].name" -o tsv)
           [ -n "$ACR" ] || { echo "::error::no container registry in $RG"; exit 1; }
           T=${ACR#cr}
@@ -67,6 +101,8 @@ jobs:
           azd env set FUNCTIONS_APP_NAME "func-cues-$T"
           azd env set KEYVAULT_NAME "kv-$T"
           az config set extension.use_dynamic_install=yes_without_prompt
+      - if: steps.infra.outputs.provision == 'true'
+        run: azd provision --no-prompt
       - run: azd deploy --all --no-prompt
       - name: Smoke test
         run: |
