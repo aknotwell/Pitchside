@@ -46,15 +46,27 @@ jobs:
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
       - name: azd login (federated)
         run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider github --tenant-id "$AZURE_TENANT_ID"
-      - name: Load the azd environment from the last provision
+      - name: Load the azd environment from the resource group
+        # Every name derives from the resource token in main.bicep, so read it off the registry
+        # (crTOKEN) instead of the subscription-scope deployment the RG-scoped identity can't see.
         run: |
+          RG=rg-matchlens-dev
           azd env new "$AZURE_ENV_NAME" --subscription "$AZURE_SUBSCRIPTION_ID" --location "$AZURE_LOCATION" --no-prompt
-          azd env set AZURE_RESOURCE_GROUP rg-matchlens-dev
-          azd env refresh --no-prompt
-          # Refresh "succeeds" with nothing loaded if the identity cannot read the
-          # subscription-scope deployment (it needs Reader on the subscription).
-          azd env get-value AZURE_CONTAINER_REGISTRY_ENDPOINT >/dev/null || {
-            echo "::error::azd env refresh loaded no outputs; does id-github-deploy have Reader on the subscription?"; exit 1; }
+          ACR=$(az acr list -g "$RG" --query "[0].name" -o tsv)
+          [ -n "$ACR" ] || { echo "::error::no container registry in $RG"; exit 1; }
+          T=${ACR#cr}
+          API_FQDN=$(az resource show -g "$RG" -n "ca-api-$T" --resource-type Microsoft.App/containerApps \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          azd env set AZURE_RESOURCE_GROUP "$RG"
+          azd env set AZURE_CONTAINER_REGISTRY_ENDPOINT "$ACR.azurecr.io"
+          azd env set AZURE_CONTAINER_ENVIRONMENT_NAME "cae-$T"
+          azd env set API_URL "https://$API_FQDN"
+          azd env set INTERPRETER_APP_NAME "ca-interp-$T"
+          azd env set SIM_JOB_NAME "job-sim-$T"
+          azd env set REPLAY_JOB_NAME "job-replay-$T"
+          azd env set FUNCTIONS_APP_NAME "func-cues-$T"
+          azd env set KEYVAULT_NAME "kv-$T"
+          az config set extension.use_dynamic_install=yes_without_prompt
       - run: azd deploy --all --no-prompt
       - name: Smoke test
         run: |
