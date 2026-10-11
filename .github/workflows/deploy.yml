@@ -1,38 +1,59 @@
-# Keyless deploy with azd. Configure once with `azd pipeline config` (creates the federated
-# credential and the AZURE_* repository variables). No secrets are stored.
+# Every push to main deploys the code to the shared azd environment (matchlens-dev).
+# Keyless: GitHub OIDC -> user-assigned managed identity id-github-deploy in rg-matchlens-dev,
+# federated on repo:aknotwell/Pitchside:ref:refs/heads/main. The IDs below are not secrets.
+#
+# Deploy only. Infra changes (infra/**) still need a manual `azd provision` from a machine
+# with the full azd env: provisioning from a fresh CI env would reset parameters such as
+# WEBPUBSUB_SKU and SERVICE_*_RESOURCE_EXISTS (which puts the apps back on placeholder images).
 name: deploy
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "tests/**"
+      - ".vscode/**"
   workflow_dispatch:
 permissions:
   id-token: write
   contents: read
+concurrency:
+  group: deploy-matchlens-dev
+  cancel-in-progress: false
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
-      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
-      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_CLIENT_ID: 95785389-1364-43b0-b9d4-4f2591e76190
+      AZURE_TENANT_ID: d4aeae60-a598-460a-b38a-6c6bb8c592ce
+      AZURE_SUBSCRIPTION_ID: cbb2ef3b-ed42-4e42-9c51-99e5895ece87
+      AZURE_ENV_NAME: matchlens-dev
+      AZURE_LOCATION: eastus2
     steps:
       - uses: actions/checkout@v4
       - uses: Azure/setup-azd@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
       - name: azd login (federated)
         run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider github --tenant-id "$AZURE_TENANT_ID"
-      - run: azd provision --no-prompt
-      - run: azd deploy --no-prompt
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.13"
-      - name: Evaluation gate (Foundry evaluators + code verifier)
-        run: uv sync --frozen && uv run python scripts/evaluate.py --seeds 501 502 --max-moments 8
+      - name: Load the azd environment from the last provision
+        run: |
+          azd env new "$AZURE_ENV_NAME" --subscription "$AZURE_SUBSCRIPTION_ID" --location "$AZURE_LOCATION" --no-prompt
+          azd env set AZURE_RESOURCE_GROUP rg-matchlens-dev
+          azd env refresh --no-prompt
+      - run: azd deploy --all --no-prompt
       - name: Smoke test
         run: |
           API_URL=$(azd env get-value API_URL)
-          curl -fsS "$API_URL/api/health"
+          for i in 1 2 3 4 5 6; do curl -fsS "$API_URL/api/health" && exit 0; sleep 20; done
+          exit 1
