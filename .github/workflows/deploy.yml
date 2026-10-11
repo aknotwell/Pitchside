@@ -38,8 +38,9 @@ jobs:
       AZURE_ENV_NAME: matchlens-dev
       AZURE_LOCATION: eastus2
       # Bicep parameters (infra/main.parameters.json) of the live environment.
-      AZURE_PRINCIPAL_ID: bb4de62a-18ef-406b-8830-1a6cf085a81c  # vmoose@outlook.com keeps data access
-      AZURE_PRINCIPAL_TYPE: User
+      # azd always sets AZURE_PRINCIPAL_ID to the signed-in identity, so the CI identity gets the
+      # "user" data roles; provisions are incremental, so earlier grants to people are kept.
+      AZURE_PRINCIPAL_TYPE: ServicePrincipal
       WEBPUBSUB_SKU: Standard_S1
       ALERT_EMAIL: vmoose@outlook.com
       DEMO_MODE: "false"
@@ -82,7 +83,7 @@ jobs:
         run: |
           RG=rg-matchlens-dev
           azd env new "$AZURE_ENV_NAME" --subscription "$AZURE_SUBSCRIPTION_ID" --location "$AZURE_LOCATION" --no-prompt
-          for v in AZURE_PRINCIPAL_ID AZURE_PRINCIPAL_TYPE WEBPUBSUB_SKU ALERT_EMAIL DEMO_MODE \
+          for v in AZURE_PRINCIPAL_TYPE WEBPUBSUB_SKU ALERT_EMAIL DEMO_MODE \
                    SERVICE_API_RESOURCE_EXISTS SERVICE_INTERPRETER_RESOURCE_EXISTS SERVICE_STORYTELLER_RESOURCE_EXISTS; do
             azd env set "$v" "$(printenv "$v")"
           done
