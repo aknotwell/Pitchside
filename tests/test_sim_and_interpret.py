@@ -199,3 +199,21 @@ def test_goals_match_events_and_moments_have_evidence(short_match):
     for m in moments:
         assert m.evidence, m.kind
         assert all(isinstance(e.value, (int, float, str)) for e in m.evidence)
+
+
+def test_offside_is_called_and_restarts_with_the_defending_side():
+    """Law 11: a pass to an offside player ends 'offside', and the other side takes an indirect free kick."""
+    called = 0
+    for seed in (1, 2, 4):
+        ev = simulate(seed, params=SHORT).events
+        for n, e in enumerate(ev):
+            if e.type != "offside":
+                continue
+            called += 1
+            passes = [x for x in ev[:n] if x.type == "pass"]
+            assert passes[-1].outcome == "offside" and passes[-1].team_id == e.team_id
+            assert passes[-1].qualifiers.get("set_piece") not in ("throw_in", "goal_kick", "corner")
+            restart = next(x for x in ev[n + 1:] if x.type in ("pass", "period_end"))
+            if restart.type == "pass":  # (unless the whistle went for the end of the half first)
+                assert restart.team_id != e.team_id and restart.qualifiers.get("set_piece") == "free_kick"
+    assert called > 0

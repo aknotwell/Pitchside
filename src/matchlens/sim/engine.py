@@ -47,6 +47,7 @@ BOX_X = HALF_LENGTH - 16.5
 BOX_Y = 20.16
 
 OWNED, FLIGHT, LOOSE, DEAD = "owned", "flight", "loose", "dead"
+NO_OFFSIDE = ("throw_in", "goal_kick", "corner")  # restarts a player cannot be offside from (law 11)
 
 # How often a role makes a run in behind (multiplies run_prob_per_s), and how it shifts the shape.
 RUN_RATE = {
@@ -209,6 +210,7 @@ class _Flight:
     result: str = ""  # shots: goal | catch | parry | parry_corner | block | block_corner | wide
     duel_done: bool = False
     tried: set[int] = field(default_factory=set)  # teammates who have had their go at controlling it
+    offside: dict[int, np.ndarray] = field(default_factory=dict)  # teammates offside when it was played, and where
 
 
 @dataclass
@@ -833,10 +835,14 @@ class MatchEngine:
         if sp == "throw_in":
             max_len = 22.0
         cands = []
+        line = self._offside_line(tid) if sp not in NO_OFFSIDE else math.inf
         for j in st.on:
             if j == i:
                 continue
             rpos = self.pos[j] * s
+            beyond = rpos[0] - line
+            if beyond > 0 and rng.random() > p["offside_misread"] * (1.3 - vision) * math.exp(-beyond / 1.5):
+                continue  # seen to be offside: not an option (tight calls are the ones passers misjudge)
             rvel = self.vel[j] * s
             if self.is_gk[j] and (b[0] > -20 or sp == "goal_kick"):
                 continue
@@ -1006,6 +1012,10 @@ class MatchEngine:
                     break
             self.flight.end = pp[:2].copy()
             self.flight.t1 = t + tt
+        if self.setpiece not in NO_OFFSIDE:
+            line = self._offside_line(tid)
+            self.flight.offside = {k: self.pos[k].copy() for k in self.ts[tid].on
+                                   if k != i and self.pos[k, 0] * s > line}
         self.state = FLIGHT
         self.last_touch = tid
         prog = float(max(0.0, end_att[0] - b[0] * s))
@@ -1105,6 +1115,9 @@ class MatchEngine:
             if mates and foes:
                 f.duel_done = True
                 a, dfd = mates[0], foes[0]
+                if a in f.offside:
+                    self._offside(t, a, f)
+                    return
                 da, dd_ = float(np.linalg.norm(self.pos[a] - self.ball[:2])), float(np.linalg.norm(self.pos[dfd] - self.ball[:2]))
                 pa = sigmoid(3.0 * (self.tr["heading"][a] - self.tr["heading"][dfd]) + 0.8 * (dd_ - da) - 0.3)
                 self._win_ball(t, a if rng.random() < pa else dfd, f)
@@ -1127,6 +1140,9 @@ class MatchEngine:
                 if rng.random() < q:
                     self._win_ball(t, j, f)
                     return
+            elif j in f.offside:  # an offside player plays the ball: whistle
+                self._offside(t, j, f)
+                return
             elif j not in f.tried:  # a teammate gets one go at controlling it
                 f.tried.add(j)
                 opps = self.ts[other(f.team)].on
@@ -1144,6 +1160,14 @@ class MatchEngine:
                 return
         if bz <= 1e-3 and float(np.linalg.norm(self.bv[:2])) < 0.6:
             self._loose(t, self.bv, team=None)  # it has died on the grass: first one there has it
+
+    def _offside(self, t: float, j: int, f: _Flight) -> None:
+        """Law 11: j was offside when the ball was played and is now involved. Indirect free kick where they were."""
+        spot = self._inside(f.offside[j], 0.5)
+        self._resolve_pass("offside", t)
+        self._emit(t, "offside", f.team, j, x=spot[0], y=spot[1])
+        delay = self.rng.uniform(*self.p["offside_restart_s"]) * self.p["restart_scale"]
+        self._set_dead(t, "free_kick", other(f.team), spot, delay=delay)  # taken quickly, usually by a defender
 
     def _in_own_box(self, j: int) -> bool:
         x = SIGN[self.tid_of[j]] * self.ball[0]
@@ -1373,10 +1397,11 @@ class MatchEngine:
                 tgt[A[1:]] += np.where((near_ball & ~running[1:])[:, None], push, 0.0)
                 # Stay onside: nobody waits beyond the second-last defender, and a runner holds the line
                 # (bending along it) until the passer is about to play, then goes.
-                go = self.state == FLIGHT or self.decide_t - t < p["run_release_s"]
-                hold = ~(runners & go)
-                X = tgt[A, 0] * s
-                tgt[A[hold], 0] = np.minimum(X[hold], self._offside_line(tid) - 0.5) * s
+                if self.state == FLIGHT or self.setpiece not in NO_OFFSIDE:
+                    go = self.state == FLIGHT or self.decide_t - t < p["run_release_s"]
+                    hold = ~(runners & go)
+                    X = tgt[A, 0] * s
+                    tgt[A[hold], 0] = np.minimum(X[hold], self._offside_line(tid) - 0.5) * s
             elif not poss and self.state in (OWNED, FLIGHT, LOOSE) and rk is None:
                 self._defend(t, tid, A, Opp, tgt, urgent, sty)
 
