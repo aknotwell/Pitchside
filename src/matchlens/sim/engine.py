@@ -341,6 +341,12 @@ class MatchEngine:
     def _att(self, tid: str, xy: np.ndarray) -> np.ndarray:
         return xy * SIGN[tid]
 
+    def _offside_line(self, tid: str) -> float:
+        """Attacking-frame x beyond which a player of ``tid`` is in an offside position (law 11): level with
+        the second-last opponent or the ball, whichever is further forward, and never in their own half."""
+        o_x = np.sort(self.pos[self.ts[other(tid)].A, 0] * SIGN[tid])[::-1]
+        return max(float(o_x[1]), float(self.ball[0] * SIGN[tid]), 0.0)
+
     def _gk(self, tid: str) -> int:
         return self.ts[tid].on[0]
 
@@ -1348,6 +1354,7 @@ class MatchEngine:
                         self.run_tgt[j] = self._inside(np.array([min(line + rng.uniform(*p["run_depth_m"]), 48.0), ty]) * s, 2.0)
                         self.run_until[j] = t + rng.uniform(*p["run_s"])
                 running = self.run_until[A] > t
+                runners = running.copy()
                 tgt[A[running]] = self.run_tgt[A[running]]
                 urgent[A[running]] = 1.0  # runs in behind are flat out
                 if self.state == OWNED and self.owner >= 0 and not self.setpiece:
@@ -1364,6 +1371,12 @@ class MatchEngine:
                 push = (np.maximum(0.0, 6.0 - dmin) * 0.8 / (dmin + 1e-6))[:, None] * away
                 near_ball = np.linalg.norm(Pm - b, axis=1) < 35
                 tgt[A[1:]] += np.where((near_ball & ~running[1:])[:, None], push, 0.0)
+                # Stay onside: nobody waits beyond the second-last defender, and a runner holds the line
+                # (bending along it) until the passer is about to play, then goes.
+                go = self.state == FLIGHT or self.decide_t - t < p["run_release_s"]
+                hold = ~(runners & go)
+                X = tgt[A, 0] * s
+                tgt[A[hold], 0] = np.minimum(X[hold], self._offside_line(tid) - 0.5) * s
             elif not poss and self.state in (OWNED, FLIGHT, LOOSE) and rk is None:
                 self._defend(t, tid, A, Opp, tgt, urgent, sty)
 

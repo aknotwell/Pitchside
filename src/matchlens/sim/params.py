@@ -83,6 +83,7 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "run_prob_per_s": 0.06,
     "run_s": [1.8, 3.5],  # how long a run in behind lasts
     "run_depth_m": [5.0, 13.0],  # how far beyond the defensive line a run in behind aims
+    "run_release_s": 0.8,  # a runner holds the offside line until the passer is this close to playing
     "drift_m": 3.0,  # off-ball positional wander (Ornstein-Uhlenbeck amplitude, metres)
     "drift_tau_s": 15.0,
     "jog_max_mps": 5.0,
