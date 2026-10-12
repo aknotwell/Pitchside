@@ -1380,6 +1380,7 @@ class MatchEngine:
             elif not poss and self.state in (OWNED, FLIGHT, LOOSE) and rk is None:
                 self._defend(t, tid, A, Opp, tgt, urgent, sty)
 
+        self._throw_in_options(tgt, urgent)
         if self.state == OWNED and self.owner >= 0:
             tgt[self.owner] = self.carry_tgt
         elif self.state == FLIGHT and self.flight is not None and self.flight.kind == "pass":
@@ -1416,6 +1417,22 @@ class MatchEngine:
             in_box = (outside_box(self.pos[Opp], side) != self.pos[Opp]).any(axis=1)
             urgent[Opp] = np.where(in_box, np.maximum(urgent[Opp], 0.6), urgent[Opp])
         return tgt, urgent
+
+    def _throw_in_options(self, tgt: np.ndarray, urgent: np.ndarray) -> None:
+        """At a throw-in the two nearest teammates come short, one down the line and one back, so the
+        thrower always has someone within reach."""
+        if self.state == DEAD and self.restart is not None and self.restart.kind == "throw_in":
+            tid, spot, taker = self.restart.team, self.restart.spot, self.restart.taker
+        elif self.state == OWNED and self.setpiece == "throw_in":
+            tid, spot, taker = self.poss, self.ball[:2], self.owner
+        else:
+            return
+        mates = [j for j in self.ts[tid].on[1:] if j != taker]
+        near = [mates[k] for k in np.argsort(_dist(self.pos[mates], spot))[:2]]
+        inward = -math.copysign(1.0, spot[1])
+        for j, (dx, dy) in zip(near, ((7.0, 9.0), (-6.0, 7.0)), strict=False):
+            tgt[j] = self._inside(spot + np.array([SIGN[tid] * dx, inward * dy]), 2.0)
+            urgent[j] = 0.6
 
     def _support(self, t, tid, A, Opp, running) -> dict[int, np.ndarray]:
         """Two teammates show for the ball: spots 9-14 m away with the most space, refreshed every second."""
