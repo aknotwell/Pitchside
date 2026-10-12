@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 import time
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
@@ -50,6 +51,13 @@ NORMS = {
 }
 SC_WEIGHTS = {"passes_per_match": 1.0, "pass_completion": 6.0, "shots_per_match": 1.0, "pass_length_mean_m": 1.0,
               "distance_km_per90_median": 1.0, "psv99_kmh_median": 1.0, "sprints_per90_median": 0.7}
+# Shape terms: mean squared error across the nine deciles, so the fit matches the spread of a
+# distribution and not just its centre. Errors are scaled by the real 10th-90th percentile range, not
+# by the value, so a narrow distribution still registers a wrong spread.
+# Peak speed is left out: SkillCorner's is a season average per player, ours one match per player,
+# and most of the spread in a single-match peak is luck (whether the game offers a long sprint). Fitting
+# that shape would squeeze players' top speeds together to cancel noise the real data doesn't have.
+DIST_WEIGHTS = {"pass_length_quantiles_m": 1.0}
 
 KNOBS: dict[str, tuple[float, float]] = {
     "decision_s[1]": (0.8, 2.4),
@@ -153,14 +161,23 @@ def evaluate(params: dict, seeds: list[int], pool: ProcessPoolExecutor, period_m
         "header_share_of_shots": max(0.01, m("headers") / max(1e-9, m("shots"))),
         "clearances_per_match": m("clearances") * scale,
         "outside_box_shot_share": max(0.01, m("outside") / max(1e-9, m("shots"))),
+        "pass_length_quantiles_m": deciles(pool_("pass_lengths")),
         "_pass_lengths": pool_("pass_lengths"), "_psv99": pool_("psv"),
     }
+
+
+def deciles(xs: list[float]) -> list[float]:
+    """The nine decile cut points, computed the same way as the targets in ``real.py``."""
+    return statistics.quantiles(xs, n=10) if len(xs) >= 2 else [0.0] * 9
 
 
 # ---------------------------------------------------------------- fitting
 def loss(st: dict, tgt: dict) -> float:
     total = sum(w * ((st[k] - tgt[k]) / tgt[k]) ** 2 for k, w in SC_WEIGHTS.items())
     total += sum(w * ((st[k] - v) / v) ** 2 for k, (v, w) in NORMS.items())
+    for k, w in DIST_WEIGHTS.items():
+        q = np.asarray(tgt[k])
+        total += w * float(np.mean(((np.asarray(st[k]) - q) / (q[-1] - q[0])) ** 2))
     return total
 
 
@@ -225,7 +242,8 @@ def main() -> None:
     print("loading targets from", SOURCE, flush=True)
     real = targets()
     ev_t, ph_t = real["events"], real["physical"]
-    tgt = {**{k: ev_t[k] for k in ("passes_per_match", "pass_completion", "shots_per_match", "pass_length_mean_m")},
+    tgt = {**{k: ev_t[k] for k in ("passes_per_match", "pass_completion", "shots_per_match", "pass_length_mean_m",
+                                   "pass_length_quantiles_m")},
            **{k: ph_t[k] for k in ("distance_km_per90_median", "psv99_kmh_median", "sprints_per90_median")}}
 
     fit_seeds = list(range(101, 101 + a.seeds))
@@ -285,7 +303,8 @@ def main() -> None:
         "interceptions and chances come from positions, and each player's traits and role shape how they move and "
         "decide. See `src/matchlens/sim/engine.py`.", "",
         "**Method:** the simulator stays fully synthetic (a fictional league, seeded). Calibration tunes "
-        f"{len(KNOBS)} engine parameters by coordinate search, minimising weighted squared relative error. Each "
+        f"{len(KNOBS)} engine parameters by coordinate search, minimising weighted squared relative error on averages "
+        "and squared error on the deciles of pass length. Each "
         f"evaluation runs {a.seeds} matches with {PERIOD_MIN:.0f}-minute halves (counts scaled to 90 minutes). "
         "Numbers below are on **held-out seeds** that were never used in fitting.", "",
         "## Against SkillCorner", "",
@@ -303,6 +322,8 @@ def main() -> None:
            f"| Pass length | {ks(before['_pass_lengths'], ev_t['_pass_lengths']):.3f} | "
            f"**{ks(after['_pass_lengths'], ev_t['_pass_lengths']):.3f}** |",
            f"| Player peak speed | {ks(before['_psv99'], ph_t['_psv99']):.3f} | **{ks(after['_psv99'], ph_t['_psv99']):.3f}** |",
+           "", "Peak speed is compared as a distribution but not fitted to one: SkillCorner's is a season average per "
+           "player, ours a single match, so ours is wider by construction.",
            "", "Definitions follow the source where possible: passes are player possessions ending in a pass (open play; "
            "restart deliveries such as throw-ins and goal kicks are not player possessions in SkillCorner either); a sprint "
            "is ≥ 25.2 km/h for at least one 1 Hz sample; peak speed is the 99.9th percentile of 1 s speeds per player "
