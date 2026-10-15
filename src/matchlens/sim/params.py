@@ -75,6 +75,15 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "restart_s": {"throw_in": [5, 11], "goal_kick": [11, 19], "free_kick": [14, 26], "corner": [16, 26],
                   "kickoff": [40, 60], "sub": [12, 22], "penalty": [45, 70]},
     "restart_scale": 1.0,
+    # Free kicks are quick (tapped short, play on) or set (wall, bodies forward, a delivery), not in between.
+    # Timings are from the foul, matched to SkillCorner's stoppage-to-reception gaps by pitch zone.
+    "fk_quick_prob": [0.55, 0.85, 0.2],  # chance of a quick one by third (own, middle, attacking), at average tempo
+    "fk_quick_s": [8.0, 24.0],  # whistle, ball placed, played
+    "fk_set_s": [22.0, 58.0],
+    "fk_wall_s": [8.0, 20.0],  # extra for a set free kick in the attacking third
+    "card_delay_s": [15.0, 30.0],
+    "fk_quick_max_m": 20.0,
+    "fk_delivery_bias": 0.03,
     "stoppage_s": [60, 240],
     # Physical
     "max_speed_mps": [7.4, 9.5],
@@ -83,6 +92,8 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "run_prob_per_s": 0.06,
     "run_s": [1.8, 3.5],  # how long a run in behind lasts
     "run_depth_m": [5.0, 13.0],  # how far beyond the defensive line a run in behind aims
+    "run_release_s": 0.8,  # a runner holds the offside line until the passer is this close to playing
+    "offside_misread": 0.25,  # chance a passer misses that a teammate level with the line is offside (vision lowers it)
     "drift_m": 3.0,  # off-ball positional wander (Ornstein-Uhlenbeck amplitude, metres)
     "drift_tau_s": 15.0,
     "jog_max_mps": 5.0,

@@ -47,6 +47,7 @@ BOX_X = HALF_LENGTH - 16.5
 BOX_Y = 20.16
 
 OWNED, FLIGHT, LOOSE, DEAD = "owned", "flight", "loose", "dead"
+NO_OFFSIDE = ("throw_in", "goal_kick", "corner")  # restarts a player cannot be offside from (law 11)
 
 # How often a role makes a run in behind (multiplies run_prob_per_s), and how it shifts the shape.
 RUN_RATE = {
@@ -209,6 +210,7 @@ class _Flight:
     result: str = ""  # shots: goal | catch | parry | parry_corner | block | block_corner | wide
     duel_done: bool = False
     tried: set[int] = field(default_factory=set)  # teammates who have had their go at controlling it
+    offside: dict[int, np.ndarray] = field(default_factory=dict)  # teammates offside when it was played, and where
 
 
 @dataclass
@@ -218,6 +220,7 @@ class _Restart:
     spot: np.ndarray
     ready_t: float
     taker: int
+    mode: str = ""  # free kicks: "quick" (tapped short, play on) or "set" (wall, bodies forward, a delivery)
 
 
 class MatchEngine:
@@ -341,6 +344,12 @@ class MatchEngine:
     def _att(self, tid: str, xy: np.ndarray) -> np.ndarray:
         return xy * SIGN[tid]
 
+    def _offside_line(self, tid: str) -> float:
+        """Attacking-frame x beyond which a player of ``tid`` is in an offside position (law 11): level with
+        the second-last opponent or the ball, whichever is further forward, and never in their own half."""
+        o_x = np.sort(self.pos[self.ts[other(tid)].A, 0] * SIGN[tid])[::-1]
+        return max(float(o_x[1]), float(self.ball[0] * SIGN[tid]), 0.0)
+
     def _gk(self, tid: str) -> int:
         return self.ts[tid].on[0]
 
@@ -379,6 +388,7 @@ class MatchEngine:
         self.loose_lock = 0.0
         self.in_hands = False
         self.setpiece: str | None = None
+        self.fk_mode = ""
         self.force_shot = False
         self.header_chance = False
         self.shielding = False
@@ -465,7 +475,7 @@ class MatchEngine:
             self.bv[:] = 0.0
         self._set_dead(t, "kickoff", team, np.zeros(2), delay=delay)
 
-    def _taker(self, kind: str, team: str, spot: np.ndarray) -> int:
+    def _taker(self, kind: str, team: str, spot: np.ndarray, mode: str = "") -> int:
         st = self.ts[team]
         outfield = st.on[1:]
         if kind in ("goal_kick",):
@@ -477,14 +487,19 @@ class MatchEngine:
             return max(outfield, key=lambda i: self.tr["crossing"][i] + 0.2 * self.tr["passing"][i])
         if kind == "penalty":
             return max(outfield, key=lambda i: self.tr["finishing"][i] + 0.5 * self.tr["composure"][i])
-        if kind == "free_kick":
+        if kind == "free_kick" and mode == "set":
             xa = self._att(team, spot)[0]
             if xa > 22 and abs(spot[1]) < 22:
                 return max(outfield, key=lambda i: self.tr["long_shots"][i] + 0.5 * self.tr["passing"][i])
+            if xa > HALF_LENGTH / 3:  # wide or deep in the attacking third: the best crosser
+                return max(outfield, key=lambda i: self.tr["crossing"][i] + 0.2 * self.tr["passing"][i])
+            if xa < -HALF_LENGTH + 20:  # deep in their own half: the keeper launches it
+                return st.on[0]
         d = np.linalg.norm(self.pos[outfield] - spot, axis=1)
         return outfield[int(np.argmin(d))]
 
-    def _set_dead(self, t: float, kind: str, team: str, spot: np.ndarray, delay: float | None = None) -> None:
+    def _set_dead(self, t: float, kind: str, team: str, spot: np.ndarray, delay: float | None = None,
+                  extra: float = 0.0) -> None:
         p, rng = self.p, self.rng
         if self.state == OWNED:
             self._end_carry(t)
@@ -493,11 +508,24 @@ class MatchEngine:
         self.flight = None
         self.poss = team
         self.run_until[:] = 0.0
-        if delay is None:
+        mode = self._fk_mode(t, team, spot) if kind == "free_kick" else ""
+        if delay is None and mode:
+            delay = rng.uniform(*p[f"fk_{mode}_s"])
+            if mode == "set" and self._att(team, spot)[0] > HALF_LENGTH / 3:
+                delay += rng.uniform(*p["fk_wall_s"])  # near goal: a wall to build, runners to set
+        elif delay is None:
             delay = rng.uniform(*p["restart_s"][kind]) * p["restart_scale"]
-        delay += self._apply_subs(t)
+        delay += extra + self._apply_subs(t)
         spot = np.array(spot, dtype=float)
-        self.restart = _Restart(kind, team, spot, t + delay, self._taker(kind, team, spot))
+        self.restart = _Restart(kind, team, spot, t + delay, self._taker(kind, team, spot, mode), mode)
+
+    def _fk_mode(self, t: float, team: str, spot: np.ndarray) -> str:
+        """Quick or set? Most free kicks deep in your own half are tapped short and played on; near the
+        opponent's box the team sets up a delivery. A high-tempo side goes quick more often."""
+        xa = self._att(team, spot)[0]
+        third = 0 if xa < -HALF_LENGTH / 3 else (1 if xa < HALF_LENGTH / 3 else 2)
+        quick = self.p["fk_quick_prob"][third] * (0.7 + 0.6 * self._style(team, t)["tempo"])
+        return "quick" if self.rng.random() < quick else "set"
 
     def _dead_step(self, t: float) -> None:
         r = self.restart
@@ -519,6 +547,7 @@ class MatchEngine:
         self.ball[:2] = r.spot
         self.ball[2] = 0.0
         self.restart = None
+        self.fk_mode = r.mode
         self.sp_kind, self.sp_until = r.kind, (t + 3.0 if r.kind in ("corner", "penalty") else t)
         self._gain(r.taker, t, setpiece=r.kind)
 
@@ -718,14 +747,16 @@ class MatchEngine:
             self._end_carry(t)
             self._emit(t, "foul", opp, j, x=b[0], y=b[1], related_player_id=self.ids[i],
                        qualifiers={"challenge": "nick" if nick else ("take_on" if take_on else "tackle")})
+            booking = 0.0
             if not self.yellow[j] and rng.random() < p["card_share_of_fouls"] * (0.6 + agg):
                 self.yellow[j] = True
                 self._emit(t + 1.0, "card", opp, j, outcome="yellow")
+                booking = rng.uniform(*p["card_delay_s"])  # the referee stops play to book them
             xa = SIGN[tid] * b[0]
             if xa > BOX_X and abs(b[1]) < BOX_Y:
-                self._set_dead(t, "penalty", tid, np.array([SIGN[tid] * (HALF_LENGTH - 11.0), 0.0]))
+                self._set_dead(t, "penalty", tid, np.array([SIGN[tid] * (HALF_LENGTH - 11.0), 0.0]), extra=booking)
             else:
-                self._set_dead(t, "free_kick", tid, self._inside(b, 0.5))
+                self._set_dead(t, "free_kick", tid, self._inside(b, 0.5), extra=booking)
             return
         speed_i = float(np.linalg.norm(self.vel[i]))
         p_win = sigmoid(2.4 * (tack - self.tr["dribbling"][i]) + p["tackle_win_logit"] + (p["take_on_logit"] if take_on else 0.0)
@@ -787,7 +818,7 @@ class MatchEngine:
         # --- shot
         dist, ang = shot_geometry(b[0], b[1])
         max_d = p["shot_max_dist_m"] + 8 * (tr["long_shots"][i] - 0.5)
-        can_shoot = sp in (None, "free_kick", "penalty") and not self.in_hands
+        can_shoot = (sp in (None, "penalty") or (sp == "free_kick" and self.fk_mode == "set")) and not self.in_hands
         if self.force_shot or (can_shoot and b[0] > 10 and dist < max_d):
             if sp == "penalty":
                 xg, blockers, header = 0.76, 0, False
@@ -814,6 +845,8 @@ class MatchEngine:
                 u_shot += p["box_space_shot_bonus"] * sight * min(1.0, (dmin - 2.5) / 3.0 + 0.5)  # a clear sight of goal: hit it
             if dist > 16 and sp != "penalty":  # some players just love to shoot from range
                 u_shot += p["long_shot_pref"] * tr["long_shots"][i] ** 2 * (1 if blockers == 0 else 0.4)
+            if sp == "free_kick" and abs(b[1]) < 20:  # a set free kick in range, straight on: a go at goal
+                u_shot += p["fk_delivery_bias"]
             if self.force_shot:
                 u_shot += 1.0
             utils.append(u_shot)
@@ -826,11 +859,19 @@ class MatchEngine:
             max_len = 70.0
         if sp == "throw_in":
             max_len = 22.0
+        set_fk = sp == "free_kick" and self.fk_mode == "set"
+        if set_fk:
+            max_len = max(max_len, 60.0)  # a dead ball, time to set up: anyone can strike it long
         cands = []
+        line = self._offside_line(tid) if sp not in NO_OFFSIDE else math.inf
+        d_line = float(np.sort(o_att[:, 0])[::-1][1])  # the defenders' line (second-last opponent)
         for j in st.on:
             if j == i:
                 continue
             rpos = self.pos[j] * s
+            beyond = rpos[0] - line
+            if beyond > 0 and rng.random() > p["offside_misread"] * (1.3 - vision) * math.exp(-beyond / 1.5):
+                continue  # seen to be offside: not an option (tight calls are the ones passers misjudge)
             rvel = self.vel[j] * s
             if self.is_gk[j] and (b[0] > -20 or sp == "goal_kick"):
                 continue
@@ -840,6 +881,8 @@ class MatchEngine:
             if self.run_until[j] > t and rvel[0] > 2.0:
                 lead = rpos + rvel * 1.4 + np.array([3.0, 0.0])
                 cands.append((j, lead, "through"))
+            if set_fk and rpos[0] > d_line - 6.0 and not self.is_gk[j]:  # dropped in behind for them to attack
+                cands.append((j, np.array([min(d_line + 6.0, HALF_LENGTH - 6.0), 0.8 * rpos[1]]), "delivery"))
         if cands:
             T_ = np.array([c[1] for c in cands])
             T_[:, 0] = np.clip(T_[:, 0], -HALF_LENGTH + 1, HALF_LENGTH - 1)
@@ -869,9 +912,12 @@ class MatchEngine:
                       - 0.06 * lofted) * (0.82 + 0.3 * passing) * st.strength
             p_exec = np.clip(p_exec, 0.3, 0.99)
             p_succ = p_exec * (1 - lane) * (1 - ctrl)
+            quick = sp == "free_kick" and self.fk_mode == "quick"
             for n, (j, _tgt, kind) in enumerate(cands):
                 if L[n] < (3.0 if sp else 5.0) or L[n] > max_len:
                     continue
+                if quick and (lofted[n] or L[n] > p["fk_quick_max_m"]):
+                    continue  # a quick one is tapped short to feet
                 if sp == "kickoff" and T_[n, 0] > 1.0:
                     continue
                 gain = T_[n, 0] - b[0]
@@ -880,9 +926,15 @@ class MatchEngine:
                       + 0.0012 * sty["directness"] * max(0.0, gain) * (1 if L[n] > 25 else 0.5)
                       + 0.012 * (1 - sty["directness"]) * p_succ[n]
                       + (0.006 * flair if kind == "through" else 0.0))
-                u_ -= p["long_pass_cost"] * max(0.0, L[n] - 25.0) / 10.0 * (1.3 - vision)  # long balls: harder, slower, riskier
+                if not set_fk:
+                    u_ -= p["long_pass_cost"] * max(0.0, L[n] - 25.0) / 10.0 * (1.3 - vision)  # long balls: harder, slower, riskier
                 if cross[n]:  # wide players who can cross look for the box
                     u_ += p["cross_bias"] * tr["crossing"][i]
+                deliver = set_fk and b[0] > -HALF_LENGTH / 3  # (deep in their own third, building out short is fine too)
+                if deliver and (in_box[n] or (lofted[n] and gain > 25)):
+                    u_ += p["fk_delivery_bias"]  # they set it up to deliver: into the box, or up the pitch
+                elif deliver and not lofted[n] and L[n] < p["fk_quick_max_m"]:
+                    u_ -= p["fk_delivery_bias"]  # (going short is what a quick one is for)
                 u_ += rng.normal(0, 0.006 * (1.4 - vision))  # imperfect reading of the picture
                 utils.append(float(u_))
                 k_ = "cross" if cross[n] else ("through" if kind == "through" else
@@ -930,6 +982,8 @@ class MatchEngine:
                 acts.append(("carry", tgt, a == math.pi))
 
         if not acts:  # nothing sensible: hold it a moment
+            if sp == "free_kick" and self.fk_mode == "quick":
+                self.fk_mode = "set"  # nobody short to tap it to: set it up instead
             self.decide_t = t + 0.5
             return
         temp = p["decision_temp"] * (1.5 - vision) * (0.7 + 0.6 * flair)
@@ -1000,6 +1054,10 @@ class MatchEngine:
                     break
             self.flight.end = pp[:2].copy()
             self.flight.t1 = t + tt
+        if self.setpiece not in NO_OFFSIDE:
+            line = self._offside_line(tid)
+            self.flight.offside = {k: self.pos[k].copy() for k in self.ts[tid].on
+                                   if k != i and self.pos[k, 0] * s > line}
         self.state = FLIGHT
         self.last_touch = tid
         prog = float(max(0.0, end_att[0] - b[0] * s))
@@ -1008,6 +1066,8 @@ class MatchEngine:
              "height": "high" if lofted else "ground"}
         if self.setpiece:
             q["set_piece"] = self.setpiece
+        if self.setpiece == "free_kick":
+            q["free_kick"] = self.fk_mode
         self.pending = {"t": t, "team": tid, "passer": i, "receiver": j, "x": b[0], "y": b[1],
                         "end_x": end[0], "end_y": end[1], "q": q}
         self.setpiece = None
@@ -1099,6 +1159,9 @@ class MatchEngine:
             if mates and foes:
                 f.duel_done = True
                 a, dfd = mates[0], foes[0]
+                if a in f.offside:
+                    self._offside(t, a, f)
+                    return
                 da, dd_ = float(np.linalg.norm(self.pos[a] - self.ball[:2])), float(np.linalg.norm(self.pos[dfd] - self.ball[:2]))
                 pa = sigmoid(3.0 * (self.tr["heading"][a] - self.tr["heading"][dfd]) + 0.8 * (dd_ - da) - 0.3)
                 self._win_ball(t, a if rng.random() < pa else dfd, f)
@@ -1121,6 +1184,9 @@ class MatchEngine:
                 if rng.random() < q:
                     self._win_ball(t, j, f)
                     return
+            elif j in f.offside:  # an offside player plays the ball: whistle
+                self._offside(t, j, f)
+                return
             elif j not in f.tried:  # a teammate gets one go at controlling it
                 f.tried.add(j)
                 opps = self.ts[other(f.team)].on
@@ -1138,6 +1204,13 @@ class MatchEngine:
                 return
         if bz <= 1e-3 and float(np.linalg.norm(self.bv[:2])) < 0.6:
             self._loose(t, self.bv, team=None)  # it has died on the grass: first one there has it
+
+    def _offside(self, t: float, j: int, f: _Flight) -> None:
+        """Law 11: j was offside when the ball was played and is now involved. Indirect free kick where they were."""
+        spot = self._inside(f.offside[j], 0.5)
+        self._resolve_pass("offside", t)
+        self._emit(t, "offside", f.team, j, x=spot[0], y=spot[1])
+        self._set_dead(t, "free_kick", other(f.team), spot)
 
     def _in_own_box(self, j: int) -> bool:
         x = SIGN[self.tid_of[j]] * self.ball[0]
@@ -1348,6 +1421,7 @@ class MatchEngine:
                         self.run_tgt[j] = self._inside(np.array([min(line + rng.uniform(*p["run_depth_m"]), 48.0), ty]) * s, 2.0)
                         self.run_until[j] = t + rng.uniform(*p["run_s"])
                 running = self.run_until[A] > t
+                runners = running.copy()
                 tgt[A[running]] = self.run_tgt[A[running]]
                 urgent[A[running]] = 1.0  # runs in behind are flat out
                 if self.state == OWNED and self.owner >= 0 and not self.setpiece:
@@ -1364,9 +1438,17 @@ class MatchEngine:
                 push = (np.maximum(0.0, 6.0 - dmin) * 0.8 / (dmin + 1e-6))[:, None] * away
                 near_ball = np.linalg.norm(Pm - b, axis=1) < 35
                 tgt[A[1:]] += np.where((near_ball & ~running[1:])[:, None], push, 0.0)
+                # Stay onside: nobody waits beyond the second-last defender, and a runner holds the line
+                # (bending along it) until the passer is about to play, then goes.
+                if self.state == FLIGHT or self.setpiece not in NO_OFFSIDE:
+                    go = self.state == FLIGHT or self.decide_t - t < p["run_release_s"]
+                    hold = ~(runners & go)
+                    X = tgt[A, 0] * s
+                    tgt[A[hold], 0] = np.minimum(X[hold], self._offside_line(tid) - 0.5) * s
             elif not poss and self.state in (OWNED, FLIGHT, LOOSE) and rk is None:
                 self._defend(t, tid, A, Opp, tgt, urgent, sty)
 
+        self._throw_in_options(tgt, urgent)
         if self.state == OWNED and self.owner >= 0:
             tgt[self.owner] = self.carry_tgt
         elif self.state == FLIGHT and self.flight is not None and self.flight.kind == "pass":
@@ -1403,6 +1485,22 @@ class MatchEngine:
             in_box = (outside_box(self.pos[Opp], side) != self.pos[Opp]).any(axis=1)
             urgent[Opp] = np.where(in_box, np.maximum(urgent[Opp], 0.6), urgent[Opp])
         return tgt, urgent
+
+    def _throw_in_options(self, tgt: np.ndarray, urgent: np.ndarray) -> None:
+        """At a throw-in the two nearest teammates come short, one down the line and one back, so the
+        thrower always has someone within reach."""
+        if self.state == DEAD and self.restart is not None and self.restart.kind == "throw_in":
+            tid, spot, taker = self.restart.team, self.restart.spot, self.restart.taker
+        elif self.state == OWNED and self.setpiece == "throw_in":
+            tid, spot, taker = self.poss, self.ball[:2], self.owner
+        else:
+            return
+        mates = [j for j in self.ts[tid].on[1:] if j != taker]
+        near = [mates[k] for k in np.argsort(_dist(self.pos[mates], spot))[:2]]
+        inward = -math.copysign(1.0, spot[1])
+        for j, (dx, dy) in zip(near, ((7.0, 9.0), (-6.0, 7.0)), strict=False):
+            tgt[j] = self._inside(spot + np.array([SIGN[tid] * dx, inward * dy]), 2.0)
+            urgent[j] = 0.6
 
     def _support(self, t, tid, A, Opp, running) -> dict[int, np.ndarray]:
         """Two teammates show for the ball: spots 9-14 m away with the most space, refreshed every second."""

@@ -28,6 +28,7 @@ EventType = Literal[
     "recovery",
     "shot",
     "foul",
+    "offside",
     "card",
     "substitution",
     "ball_out",

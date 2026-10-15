@@ -83,11 +83,12 @@ def test_ball_keeps_moving_while_a_player_has_it(logged):
     eng, r = logged
     v = np.r_[0.0, np.linalg.norm(np.diff(r.tracking_ball[:, :2], axis=0), axis=1) * r.metadata.fps]
     owned = np.array([s == "owned" for s, _ in eng.log])
+    outfield = np.array([s == "owned" and not eng.is_gk[o] for s, o in eng.log])  # a keeper holds a catch for up to 6 s
     longest, run = 0, 0
-    for still in (v < 0.2) & owned:
+    for still in (v < 0.2) & outfield:
         run = run + 1 if still else 0
         longest = max(longest, run)
-    assert longest / r.metadata.fps < 3.0  # (goalkeepers holding a catch is the longest legitimate pause)
+    assert longest / r.metadata.fps < 3.0
     assert ((v < 0.2) & owned).sum() / owned.sum() < 0.12
 
 
@@ -199,3 +200,23 @@ def test_goals_match_events_and_moments_have_evidence(short_match):
     for m in moments:
         assert m.evidence, m.kind
         assert all(isinstance(e.value, (int, float, str)) for e in m.evidence)
+
+
+def test_offside_is_called_and_restarts_with_the_defending_side():
+    """Law 11: a pass to an offside player ends 'offside', and the other side takes an indirect free kick."""
+    called = 0
+    for seed in range(1, 25):  # short matches see one offside in two or three: look until there are a few
+        if called >= 3:
+            break
+        ev = simulate(seed, params=SHORT).events
+        for n, e in enumerate(ev):
+            if e.type != "offside":
+                continue
+            called += 1
+            passes = [x for x in ev[:n] if x.type == "pass"]
+            assert passes[-1].outcome == "offside" and passes[-1].team_id == e.team_id
+            assert passes[-1].qualifiers.get("set_piece") not in ("throw_in", "goal_kick", "corner")
+            restart = next(x for x in ev[n + 1:] if x.type in ("pass", "period_end"))
+            if restart.type == "pass":  # (unless the whistle went for the end of the half first)
+                assert restart.team_id != e.team_id and restart.qualifiers.get("set_piece") == "free_kick"
+    assert called > 0
