@@ -220,3 +220,19 @@ def test_offside_is_called_and_restarts_with_the_defending_side():
             if restart.type == "pass":  # (unless the whistle went for the end of the half first)
                 assert restart.team_id != e.team_id and restart.qualifiers.get("set_piece") == "free_kick"
     assert called > 0
+
+
+def test_frames_say_which_restart_the_ball_is_dead_for(short_match):
+    frames = [f for m in short_match.stream() if m.kind == "tracking" for f in m.payload["frames"]]
+    at = {f["t_s"]: f["restart"] for f in frames}
+    assert frames[0]["restart"] == {"kind": "kickoff", "team": frames[0]["restart"]["team"]}
+    kinds = {f["restart"]["kind"] for f in frames if f["restart"]}
+    assert {"kickoff", "throw_in", "goal_kick"} <= kinds
+    # the ball goes out, and the frames carry the restart it was given to the other side
+    outs = [e for e in short_match.events if e.type == "ball_out"]
+    assert outs
+    for e in outs:
+        rs = at[round(e.clock_s, 2)]
+        assert rs == {"kind": e.qualifiers["restart"], "team": "a" if e.team_id == "h" else "h"}
+    live = sum(f["restart"] is None for f in frames)
+    assert 0.5 * len(frames) < live < len(frames)

@@ -33,6 +33,7 @@ from matchlens.contracts import (
     MatchEvent,
     MatchMetadata,
     PlayerPos,
+    Restart,
     StreamMessage,
     TrackingBatch,
 )
@@ -123,6 +124,10 @@ def display_clock(clock_s: float, period: int, period_start_s: float, period_min
     return f"{int((base + regulation) // 60)}+{int(extra // 60) + 1}:{int(extra % 60):02d}"
 
 
+# t (T,), ball (T, 3), players (T, P, 2), restart per tick, player ids
+_Tracking = tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[str, str] | None], list[str]]
+
+
 @dataclass
 class SimResult:
     metadata: MatchMetadata
@@ -130,6 +135,7 @@ class SimResult:
     tracking_t: np.ndarray  # (T,)
     tracking_ball: np.ndarray  # (T, 3)
     tracking_players: np.ndarray  # (T, P, 2), NaN when off the pitch
+    tracking_restart: list[tuple[str, str] | None]  # (T,) (kind, team) while the ball is dead for a restart
     player_ids: list[str]
     period_bounds: list[tuple[float, float]]
 
@@ -162,6 +168,7 @@ class SimResult:
                         t_s=round(float(self.tracking_t[k]), 2),
                         ball=(round(float(b[0]), 2), round(float(b[1]), 2), round(float(b[2]), 2)),
                         players=players,
+                        restart=Restart(kind=rs[0], team=rs[1]) if (rs := self.tracking_restart[k]) else None,
                     )
                 )
             period = 1 if float(self.tracking_t[start]) < self.period_bounds[0][1] + 1e-6 else 2
@@ -268,7 +275,7 @@ class MatchEngine:
         self.period_start = 0.0
         self.period_bounds: list[tuple[float, float]] = []
         self.score = {"h": 0, "a": 0}
-        self._result: tuple[np.ndarray, np.ndarray, np.ndarray, list[str]] | None = None
+        self._result: _Tracking | None = None
         self.decision_log: list[dict] | None = None  # set to [] to record every on-ball decision
 
     # ------------------------------------------------------------------ helpers
@@ -366,6 +373,7 @@ class MatchEngine:
         max_T = int((2 * period_s + 2 * p["stoppage_s"][1] * p["period_min"] / 45 + 600) * self.fps)
         frames_ball = np.zeros((max_T, 3))
         frames_pl = np.full((max_T, self.P, 2), np.nan, dtype=np.float32)
+        frames_restart: list[tuple[str, str] | None] = []
         P = self.P
         self.pos = np.full((P, 2), np.nan)
         self.vel = np.zeros((P, 2))
@@ -427,6 +435,8 @@ class MatchEngine:
                 self._step(t)
                 frames_ball[k] = self.ball
                 frames_pl[k] = self.pos
+                r = self.restart if self.state == DEAD else None
+                frames_restart.append((r.kind, r.team) if r else None)
                 k += 1
                 over = t >= end_t and self.state in (OWNED, DEAD) and self.pending is None
                 if over or t >= end_t + 30 or k >= max_T:
@@ -445,7 +455,7 @@ class MatchEngine:
             e.event_id = f"{self.match_id}-e{n:05d}"
         T = k
         ts = np.arange(T) * dt
-        self._result = (ts, frames_ball[:T], frames_pl[:T], list(self.ids))
+        self._result = (ts, frames_ball[:T], frames_pl[:T], frames_restart, list(self.ids))
 
     def _step(self, t: float) -> None:
         if self.state == DEAD:
@@ -1743,13 +1753,13 @@ class MatchEngine:
     def simulate_events(self) -> None:
         self._simulate()
 
-    def simulate_tracking(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
+    def simulate_tracking(self) -> _Tracking:
         self._simulate()
         assert self._result is not None
         return self._result
 
     def run(self) -> SimResult:
-        ts, ball, players, ids = self.simulate_tracking()
+        ts, ball, players, restarts, ids = self.simulate_tracking()
         meta = MatchMetadata(
             match_id=self.match_id,
             home=self.teams["h"],
@@ -1759,7 +1769,7 @@ class MatchEngine:
             fps=self.fps,
             period_min=float(self.p["period_min"]),
         )
-        return SimResult(meta, self.events, ts, ball, players, ids, self.period_bounds)
+        return SimResult(meta, self.events, ts, ball, players, restarts, ids, self.period_bounds)
 
 
 def simulate(seed: int, match_id: str | None = None, params: dict | None = None, fps: int = 10) -> SimResult:
