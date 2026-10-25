@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
-import { Choice, Dropdown } from "./components/Dropdown";
 import { isLive, MatchPicker } from "./components/MatchPicker";
 import { Overlay } from "./components/Overlay";
 import { Pitch } from "./components/Pitch";
@@ -10,9 +9,9 @@ import { RestartLabel } from "./components/RestartLabel";
 import { Scoreboard } from "./components/Scoreboard";
 import { Squads } from "./components/Squads";
 import { Stats } from "./components/Stats";
+import { Transport } from "./components/Transport";
 import { WhyDrawer } from "./components/WhyDrawer";
 import { BROADCAST_DELAY_S, useLiveMatch } from "./live";
-import { SPEEDS } from "./playback";
 import { useReplay } from "./replay";
 import { LAB_META, labSample } from "./lab";
 import type { Cue, Lang, MatchState, MatchSummary, Persona } from "./types";
@@ -69,7 +68,7 @@ function Main({ params }: { params: URLSearchParams }) {
   const liveFeed = useLiveMatch(replayId ? null : matchId, persona, lang);
   const replayFeed = useReplay(replayId, persona, lang, finalState);
   const live = replayId ? replayFeed : liveFeed;
-  const { paused } = live;
+  const { paused, controls } = live;
 
   useEffect(() => {
     api.replays().then((r) => setReplays(r.replays)).catch(() => {});
@@ -78,19 +77,18 @@ function Main({ params }: { params: URLSearchParams }) {
     if (replayId) api.match(replayId).then(setFinalState).catch(() => setFinalState(null));
   }, [replayId]);
 
-  // Space toggles replay pause, unless focus is on something that uses Space itself
-  // (the Ask box, buttons, links, the recap audio player).
+  // Space toggles pause, unless focus is on something that uses Space itself
+  // (the Ask box, buttons, links, the seek bar, the recap audio player).
   useEffect(() => {
-    if (!replayId) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== " " || e.repeat || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing || e.defaultPrevented) return;
       if (e.target instanceof Element && e.target.closest("input,textarea,select,button,a[href],audio,video,[contenteditable]")) return;
       e.preventDefault();
-      replayFeed.controls.togglePause();
+      controls.togglePause();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [replayId, replayFeed.controls]);
+  }, [controls]);
 
   useEffect(() => {
     let alive = true;
@@ -121,18 +119,6 @@ function Main({ params }: { params: URLSearchParams }) {
         <MatchPicker matches={matches} replays={replays} matchId={matchId} replayId={replayId}
                      onMatch={(id) => { setReplayId(null); setMatchId(id); }}
                      onReplay={setReplayId} />
-        {replayId && (
-          <>
-            <Dropdown label={`${live.speed}× replay`} ariaLabel="Replay speed">
-              {(close) => SPEEDS.map((s) => (
-                <Choice key={s} on={s === live.speed} onPick={() => { live.controls.setSpeed(s); close(); }}>{s}× replay</Choice>
-              ))}
-            </Dropdown>
-            <button aria-label={paused ? "Play replay" : "Pause replay"} title="Space" onClick={live.controls.togglePause}>
-              {paused ? <><span aria-hidden="true">▶</span> Play</> : <><span aria-hidden="true">❚❚</span> Pause</>}
-            </button>
-          </>
-        )}
         <div className="seg" role="group" aria-label="Viewer">
           {PERSONAS.map((p) => (
             <button key={p.id} className={persona === p.id ? "on" : ""} title={p.hint} onClick={() => setPersona(p.id)}>{p.label}</button>
@@ -143,29 +129,33 @@ function Main({ params }: { params: URLSearchParams }) {
         </div>
       </header>
       <main>
-        <section className={view === "3d" ? "stage three" : "stage"}>
-          <Scoreboard state={live.state} delay={replayId ? 0 : BROADCAST_DELAY_S} connected={live.connected} replay={!!replayId} paused={paused} />
-          {view === "3d" ? (
-            <Suspense fallback={<Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} follow={follow} />}>
-              <Pitch3D sample={live.sample} meta={live.state?.meta} follow={follow} camMode={cam} paused={paused} />
-            </Suspense>
-          ) : (
-            <Pitch frame={live.frame} sample={live.sample} meta={live.state?.meta} cues={live.cues} follow={follow} />
-          )}
-          <div className="viewbar">
-            <div className="seg" role="group" aria-label="Pitch view">
-              <button className={view === "2d" ? "on" : ""} onClick={() => setView("2d")}>2D</button>
-              <button className={view === "3d" ? "on" : ""} onClick={() => setView("3d")} disabled={!HAS_GL}>3D</button>
-            </div>
-            {view === "3d" && (
-              <select aria-label="Camera" value={cam} onChange={(e) => setCam(e.target.value as CamMode)}>
-                {CAMS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
+        <div className="watch">
+          <section className={view === "3d" ? "stage three" : "stage"}>
+            <Scoreboard state={live.state} delay={replayId ? 0 : BROADCAST_DELAY_S} connected={live.connected} replay={!!replayId} paused={paused}
+                        behind={!replayId && !live.followLive} />
+            {view === "3d" ? (
+              <Suspense fallback={<Pitch frame={live.frame} meta={live.state?.meta} cues={live.cues} follow={follow} />}>
+                <Pitch3D sample={live.sample} meta={live.state?.meta} follow={follow} camMode={cam} paused={paused} />
+              </Suspense>
+            ) : (
+              <Pitch frame={live.frame} sample={live.sample} meta={live.state?.meta} cues={live.cues} follow={follow} />
             )}
-          </div>
-          <RestartLabel restart={live.frame?.restart} meta={live.state?.meta} />
-          <Overlay cues={live.cues} onWhy={setWhy} />
-        </section>
+            <div className="viewbar">
+              <div className="seg" role="group" aria-label="Pitch view">
+                <button className={view === "2d" ? "on" : ""} onClick={() => setView("2d")}>2D</button>
+                <button className={view === "3d" ? "on" : ""} onClick={() => setView("3d")} disabled={!HAS_GL}>3D</button>
+              </div>
+              {view === "3d" && (
+                <select aria-label="Camera" value={cam} onChange={(e) => setCam(e.target.value as CamMode)}>
+                  {CAMS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              )}
+            </div>
+            <RestartLabel restart={live.frame?.restart} meta={live.state?.meta} />
+            <Overlay cues={live.cues} onWhy={setWhy} />
+          </section>
+          <Transport live={live} isLive={!replayId} />
+        </div>
         <aside className="side">
           <nav className="tabs">
             {(["stats", "squads", "feed", "ask", "producer"] as const).map((t) => (

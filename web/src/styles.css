@@ -110,3 +110,12 @@ footer { padding: 10px 16px; color: var(--muted); font-size: 12px; border-top: 1
 .viewbar .seg button.on { background: var(--accent); }
 .stage.three { aspect-ratio: 3 / 2; }
 .stage.three .pitch3d { position: absolute; inset: 0; aspect-ratio: auto; height: 100%; }
+.watch { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.transport { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+.transport input[type="range"] { flex: 1; min-width: 80px; margin: 0; accent-color: var(--accent); }
+.transport .clock { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.transport .golive { color: var(--danger); border-color: var(--danger); white-space: nowrap; }
+.transport .onair { color: var(--danger); }
+.transport .picker-btn { white-space: nowrap; }
+.transport .picker-menu { left: auto; right: 0; top: auto; bottom: calc(100% + 4px); min-width: 72px; }
+@media (max-width: 520px) { .transport .lbl { display: none; } .transport { gap: 6px; padding: 6px; } }
