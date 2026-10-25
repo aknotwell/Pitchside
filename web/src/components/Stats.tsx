@@ -1,4 +1,11 @@
-import type { MatchState, Persona } from "../types";
+import type { MatchState, Persona, TeamSummary } from "../types";
+
+const dash = "–";
+const passLength = (t: TeamSummary) => (t.avgPassLengthM ? `${t.avgPassLengthM.toFixed(1)} m` : dash);
+const difficulty = (t: TeamSummary) => (t.avgPassDifficulty ? `${(t.avgPassDifficulty * 10).toFixed(1)}/10` : dash);
+const hardPasses = (t: TeamSummary) =>
+  t.hardPasses ? `${t.hardPasses} (${Math.round((t.hardPassAccuracy ?? 0) * 100)}%)` : t.hardPasses === 0 ? 0 : dash;
+const shotSpeed = (t: TeamSummary) => (t.fastestShotKmh ? `${Math.round(t.fastestShotKmh)} km/h` : dash);
 
 function Bar({ value, left, right, label }: { value: number; left: string; right: string; label: string }) {
   const pct = Math.round(((value + 1) / 2) * 100);
@@ -20,14 +27,19 @@ export function Stats({ state, persona }: { state: MatchState | null; persona: P
         ["Shots (on target)", `${h.shots} (${h.shotsOnTarget})`, `${a.shots} (${a.shotsOnTarget})`],
         ["Possession", `${Math.round(state.possessionHome * 100)}%`, `${Math.round((1 - state.possessionHome) * 100)}%`],
         ["Pass accuracy", `${Math.round(h.passAccuracy * 100)}%`, `${Math.round(a.passAccuracy * 100)}%`],
+        ["Avg pass length", passLength(h), passLength(a)],
+        ["Pass difficulty (avg)", difficulty(h), difficulty(a)],
+        ["Hard passes (% completed)", hardPasses(h), hardPasses(a)],
         ["Final-third entries", h.finalThirdEntries, a.finalThirdEntries],
         ["PPDA", h.ppda ?? "–", a.ppda ?? "–"],
         ["Pressures", h.pressures, a.pressures],
+        ["Fastest shot", shotSpeed(h), shotSpeed(a)],
       ]
     : [
         ["Shots", h.shots, a.shots],
         ["Possession", `${Math.round(state.possessionHome * 100)}%`, `${Math.round((1 - state.possessionHome) * 100)}%`],
         ["Chance quality (xG)", h.xg.toFixed(1), a.xg.toFixed(1)],
+        ["Fastest shot", shotSpeed(h), shotSpeed(a)],
       ];
   return (
     <div className="stats">

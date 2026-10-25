@@ -28,6 +28,9 @@ PPDA_ZONE_X = -10.5  # defender-frame x above which defensive actions count (opp
 SPRINT_MPS = 7.0
 MAX_HUMAN_MPS = 11.0  # ~40 km/h
 TOP_SPEED_TAG_MPS = 8.3  # 30 km/h, the usual broadcast 'top speed' tag
+HARD_PASS = 0.6  # difficulty from which a pass counts as hard (about the hardest quarter)
+PASS_TAG_DIFFICULTY = 0.75  # a completed pass this hard, that also goes forward, gets an on-screen tag
+PASS_TAG_PROGRESS_M = 10.0
 MOMENTUM_HALF_LIFE_S = 180.0
 WINDOW_S = 600.0
 
@@ -61,6 +64,12 @@ class TeamStats:
     pressures: int = 0
     threat: float = 0.0  # EWMA, see momentum
     cards: int = 0
+    # Pass quality. Difficulty is the engine's 1 - P(success) when the pass was chosen.
+    pass_length_sum: float = 0.0
+    pass_difficulty_sum: float = 0.0
+    hard_passes: int = 0
+    hard_passes_complete: int = 0
+    fastest_shot_kmh: float = 0.0
 
     def summary(self) -> dict[str, Any]:
         acc = self.passes_complete / self.passes if self.passes else 0.0
@@ -79,6 +88,11 @@ class TeamStats:
             "pressures": self.pressures,
             "turnovers": self.turnovers,
             "cards": self.cards,
+            "avgPassLengthM": r2(self.pass_length_sum / self.passes) if self.passes else 0.0,
+            "avgPassDifficulty": r2(self.pass_difficulty_sum / self.passes) if self.passes else 0.0,
+            "hardPasses": self.hard_passes,
+            "hardPassAccuracy": r2(self.hard_passes_complete / self.hard_passes) if self.hard_passes else None,
+            "fastestShotKmh": r2(self.fastest_shot_kmh),
         }
 
 
@@ -300,11 +314,19 @@ class MatchInterpreter:
         if ev.type == "pass" and team:
             ts = self.teams[team]
             ts.passes += 1
+            q = ev.qualifiers
+            difficulty = float(q.get("difficulty", 0.0))
+            hard = difficulty >= HARD_PASS
+            ts.pass_length_sum += float(q.get("length_m", 0.0))
+            ts.pass_difficulty_sum += difficulty
+            ts.hard_passes += int(hard)
             if ev.x is not None and att_x(team, ev.x) < 10.5:
                 self.window.append(WindowEvent(ev.clock_s, team, "pass_own60"))
                 self.teams[opp].opp_passes_own_60 += 1  # type: ignore[index]
             if ev.outcome == "complete":
                 ts.passes_complete += 1
+                ts.hard_passes_complete += int(hard)
+                self._check_pass_quality(ev, out, trace_id)
                 ex = att_x(team, ev.end_x or 0.0)
                 sx = att_x(team, ev.x or 0.0)
                 if ex > FINAL_THIRD_X >= sx:
@@ -359,6 +381,7 @@ class MatchInterpreter:
         speed = float(ev.qualifiers.get("shot_speed_kmh", 0.0))
         ts.shots += 1
         ts.xg += xg
+        ts.fastest_shot_kmh = max(ts.fastest_shot_kmh, speed)
         self.window.append(WindowEvent(ev.clock_s, team, "xg", xg))
         self._add_threat(team, ev.clock_s, xg)
         if ev.outcome in ("goal", "saved"):
@@ -388,6 +411,30 @@ class MatchInterpreter:
                     trace_id, metrics))
             if xg >= 0.25 and self._cooldown("big_chance", 120):
                 out.moments.append(self._moment("big_chance", ev, trace_id))
+
+    def _check_pass_quality(self, ev: MatchEvent, out: Output, trace_id: str | None) -> None:
+        """Tag a completed open-play pass that was hard and moved the ball forward."""
+        q = ev.qualifiers
+        difficulty = float(q.get("difficulty", 0.0))
+        if (q.get("set_piece") or difficulty < PASS_TAG_DIFFICULTY or float(q.get("progressive_m", 0.0)) < PASS_TAG_PROGRESS_M
+                or not self._cooldown("pass_quality", 90)):
+            return
+        team = ev.team_id or "h"
+        passer = self.names.get(ev.player_id or "", "?")
+        receiver = self.names.get(ev.related_player_id or "", "?")
+        length, kmh = float(q.get("length_m", 0.0)), float(q.get("ball_speed_mps", 0.0)) * 3.6
+        rating = max(1, round(10 * difficulty))
+        metrics = [
+            EvidenceItem(key="pass_difficulty", label="Pass difficulty", value=rating, unit="/10"),
+            EvidenceItem(key="pass_length_m", label="Pass length", value=r2(length), unit="m"),
+            EvidenceItem(key="ball_speed_kmh", label="Ball speed", value=r2(kmh), unit="km/h"),
+            EvidenceItem(key="progressive_m", label="Ball moved forward", value=r2(q.get("progressive_m", 0.0)), unit="m"),
+        ]
+        out.cues.append(self._cue(
+            ev, "pass.quality", f"Pass of quality · {self.team_names.get(team, team)}",
+            f"{passer} → {receiver} · {length:.0f} m · {kmh:.0f} km/h · difficulty {rating}/10", 3,
+            {"player": passer, "receiver": receiver, "team": team, "lengthM": r2(length), "speedKmh": r2(kmh),
+             "difficulty": rating, "underPressure": bool(q.get("under_pressure"))}, trace_id, metrics))
 
     def _cooldown(self, key: str, seconds: float) -> bool:
         last = self.last_moment_t.get(key, -1e9)

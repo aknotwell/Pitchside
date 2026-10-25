@@ -65,7 +65,7 @@ flowchart LR
 | Stage (rule 4.1) | What MatchLens does |
 |---|---|
 | **Ingest** | A seeded, agent-based simulator (ACA Job) plays a fictional match at 1–30× speed into Event Hubs. Players have roles and 1–99 traits and teams have tactical styles; pressure, tackles, interceptions and chances emerge from positions. Events (passes, carries, pressures, tackles, interceptions, shots with xG and shot speed, fouls, cards, subs) plus 10 Hz tracking of 22 players and the ball |
-| **Interpret** | Deterministic, idempotent metrics: xG, possession, pass accuracy, final-third entries, PPDA (match and rolling), momentum, a control-vs-chaos index, distance, top speed and sprints. A replay gives byte-identical state (tested) |
+| **Interpret** | Deterministic, idempotent metrics: xG, possession, pass accuracy, pass length, a pass difficulty rating (with a "pass of quality" tag on screen), shot speed, final-third entries, PPDA (match and rolling), momentum, a control-vs-chaos index, distance, top speed and sprints. A replay gives byte-identical state (tested) |
 | **Explain** | Detectors raise moments (goal, big chance, momentum swing, pressing surge, half time and full time) with an **evidence pack**. An Agent Framework workflow (Editor → Explainer → Verifier → Director) writes the *why* |
 | **Render** | Machine-readable `OverlayCue`s with `display_at_s`, TTL, priority and template, timed against a 10 s broadcast delay so agent latency is invisible. Shown on a live 2D pitch with lower-thirds, player speed tags and recap panels |
 | **Personalize** | Analyst vs casual register, three languages (one non-Latin), all from one structured model call per moment. Recaps are also **voiced** in each language |

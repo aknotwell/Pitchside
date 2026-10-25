@@ -164,6 +164,25 @@ def test_top_speeds_are_human(short_match):
     assert all(s["kmh"] < 40 for s in it.state_doc()["topSpeeds"])
 
 
+def test_pass_quality_is_summarised_and_tagged(short_match):
+    it, cues, _ = run_interpreter(short_match.stream())
+    passes = [e for e in short_match.events if e.type == "pass" and e.team_id == "h"]
+    h = it.state_doc()["home"]
+    assert h["avgPassLengthM"] == pytest.approx(np.mean([e.qualifiers["length_m"] for e in passes]), abs=0.01)
+    assert 0 < h["avgPassDifficulty"] < 1
+    hard = [e for e in passes if e.qualifiers["difficulty"] >= 0.6]
+    assert h["hardPasses"] == len(hard)
+    assert h["hardPassAccuracy"] == pytest.approx(np.mean([e.outcome == "complete" for e in hard]), abs=0.01)
+    tags = [c for c in cues if c.template == "pass.quality"]
+    assert tags, "a short match still has at least one hard forward pass"
+    by_id = {e.event_id: e for e in short_match.events}
+    for c in tags:
+        ev = by_id[c.evidence.event_ids[0]]
+        assert ev.outcome == "complete" and not ev.qualifiers.get("set_piece")
+        assert c.data["difficulty"] == round(10 * ev.qualifiers["difficulty"]) >= 8
+    assert all(b.display_at_s - a.display_at_s >= 90 for a, b in zip(tags, tags[1:], strict=False))
+
+
 def test_interpreter_replay_is_identical(short_match):
     msgs = list(short_match.stream())
     it1, cues1, moments1 = run_interpreter(msgs)
