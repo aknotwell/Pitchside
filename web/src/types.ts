@@ -1,4 +1,10 @@
-export type Persona = "analyst" | "casual";
+export type Persona = "analyst" | "casual" | "academy" | "scout";
+export const PERSONAS: { id: Persona; label: string; hint: string }[] = [
+  { id: "casual", label: "Fan", hint: "Plain words, why it matters" },
+  { id: "analyst", label: "Analyst", hint: "Tactics and metrics" },
+  { id: "academy", label: "Academy", hint: "A coach's lesson for young players" },
+  { id: "scout", label: "Scout", hint: "What the moment says about the players" },
+];
 export type Lang = "en" | "es" | "ja";
 
 export interface PlayerPos { id: string; x: number; y: number }

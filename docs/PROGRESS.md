@@ -655,3 +655,24 @@ Against typical match values:
   re-simulation exactly in all three (928, 899 and 955). Averages: 27 shots, 832
   open-play passes (real 804) and about 81% completion. One match finished 2–6, a
   high-scoring outlier; across 64 matches the average is 2.7 goals.
+
+## Checkpoint 16: academy and scout personas, Personalizer agents (2026-10-25)
+
+- **Personas:** `academy` (a youth coach's lesson: the principle behind the moment and
+  one thing to copy in training) and `scout` (what the action says about the player
+  involved) join `analyst` and `casual`. Style guides are in
+  `src/matchlens/story/personas.py`; each has localized, verified templates.
+- **Workflow:** Editor → Explainer → Personalizer → Verifier → Director. The Explainer
+  writes one shared angle; one Personalizer agent per persona then writes all three
+  languages, concurrently. This replaces the single call that returned every
+  variant, which would have grown to 12 variants per call.
+- **Isolation:** the Verifier judges each persona separately. A rejected persona is
+  retried once with feedback, then falls back to its template. The others keep their
+  agent text. A run whose personas disagree is recorded with source `partial`, and the
+  per-persona outcome is in `personas`.
+- **Local runs:** with no `FOUNDRY_PROJECT_ENDPOINT`, the storyteller uses
+  `TemplateWriter` and needs no model or credentials. Its cues are labelled as
+  templates, never as AI.
+- **Not yet measured on Azure:** latency (the angle call is now serial before the
+  Personalizers) and token use (5 calls per explained moment instead of 1). The
+  evaluation gate's agent rate now counts per persona variant.

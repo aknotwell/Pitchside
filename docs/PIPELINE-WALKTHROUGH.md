@@ -117,11 +117,16 @@ as the session id, so ordering is kept per match. The storyteller
 in `src/matchlens/story/workflow.py`:
 
 1. The **Editor** applies the overlay budget.
-2. The **Explainer** makes one structured Foundry call that returns every
-   persona × language variant.
-3. The **Verifier** (`src/matchlens/story/verifier.py`) rejects any number or
-   name that isn't in the evidence pack.
-4. The **Director** emits the cues.
+2. The **Explainer** makes one short Foundry call for the crew's shared angle
+   on the moment. If it is slow or ungrounded, the next step goes on without it.
+3. The **Personalizers** run concurrently, one Foundry agent per persona (analyst,
+   fan, academy coach, scout; `src/matchlens/story/personas.py`). Each writes its
+   register in every language.
+4. The **Verifier** (`src/matchlens/story/verifier.py`) rejects any number or
+   name that isn't in the evidence pack. It judges each persona separately: a
+   rejected persona is rewritten once with the problems as feedback, then falls
+   back to its template, and the other personas are kept.
+5. The **Director** emits the cues.
 
 If the model fails, the workflow falls back from `gpt-5-mini` to
 `gpt-4.1-mini` and then to localized templates (`src/matchlens/story/templates.py`).
@@ -165,7 +170,7 @@ on Static Web Apps receives cues over a WebSocket; it doesn't poll.
 **Check:**
 
 - Open the match in the player and watch overlays appear without refreshing.
-  Switch **Fan / Analyst** and **EN / ES / 日本語** to join different cue groups.
+  Switch **Fan / Analyst / Academy / Scout** and **EN / ES / 日本語** to join different cue groups.
 - `curl -s "$API/api/negotiate?matchId=$ID&persona=analyst&lang=ja"` returns
   the WebSocket URL and the groups a viewer joins. The URL contains an access
   token, so don't paste it anywhere.

@@ -21,7 +21,8 @@ function Bar({ value, left, right, label }: { value: number; left: string; right
 export function Stats({ state, persona }: { state: MatchState | null; persona: Persona }) {
   if (!state) return <div className="stats empty">No match state yet.</div>;
   const h = state.home, a = state.away;
-  const rows: [string, string | number, string | number][] = persona === "analyst"
+  const detailed = persona === "analyst" || persona === "scout";
+  const rows: [string, string | number, string | number][] = detailed
     ? [
         ["xG", h.xg.toFixed(2), a.xg.toFixed(2)],
         ["Shots (on target)", `${h.shots} (${h.shotsOnTarget})`, `${a.shots} (${a.shotsOnTarget})`],
@@ -49,7 +50,7 @@ export function Stats({ state, persona }: { state: MatchState | null; persona: P
       </table>
       <Bar value={state.momentum} left={a.name} right={h.name} label="Momentum" />
       <Bar value={state.controlChaos * 2 - 1} left="Control" right="Chaos" label="Game rhythm" />
-      {persona === "analyst" && state.topSpeeds.length > 0 && (
+      {detailed && state.topSpeeds.length > 0 && (
         <div className="speeds"><div className="bar-label">Top speeds</div>
           {state.topSpeeds.slice(0, 3).map((s) => <div key={s.playerId}>{s.name} · {s.kmh.toFixed(1)} km/h</div>)}
         </div>

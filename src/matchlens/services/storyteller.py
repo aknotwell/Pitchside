@@ -19,7 +19,7 @@ from opentelemetry import trace
 
 from matchlens.azure_io.common import async_credential, create_once, settings, setup_telemetry
 from matchlens.contracts import Moment
-from matchlens.story.workflow import CHECKPOINT_TYPES, FoundryExplainer, Storyteller
+from matchlens.story.workflow import CHECKPOINT_TYPES, FoundryExplainer, Storyteller, TemplateWriter
 
 log = logging.getLogger("matchlens.storyteller")
 tracer = trace.get_tracer("matchlens.storyteller")
@@ -47,8 +47,12 @@ class StorytellerService:
         self.runs = db.get_container_client("runs")
         storage = CosmosCheckpointStorage(container_client=db.get_container_client("checkpoints"),
                                           allowed_checkpoint_types=CHECKPOINT_TYPES)
-        explainer = FoundryExplainer(s.foundry_project_endpoint, s.foundry_deployments, self.cred)
-        self.story = Storyteller(explainer, roster=lambda mid: self.rosters.get(mid, set()),
+        if s.foundry_project_endpoint:
+            writer = FoundryExplainer(s.foundry_project_endpoint, s.foundry_deployments, self.cred)
+        else:
+            log.warning("FOUNDRY_PROJECT_ENDPOINT is not set: writing every persona from templates")
+            writer = TemplateWriter()
+        self.story = Storyteller(writer, roster=lambda mid: self.rosters.get(mid, set()),
                                  checkpoint_storage=storage, fault=self._chaos_fault)
         self.chaos_armed = False
         self.sb = ServiceBusClient(s.servicebus_fqdn, credential=self.cred)

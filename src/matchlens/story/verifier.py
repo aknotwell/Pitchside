@@ -22,7 +22,7 @@ MAX_TEXT = 260
 
 
 class Variant(BaseModel):
-    persona: str = Field(description="'analyst' or 'casual'")
+    persona: str = Field(description="'analyst', 'casual', 'academy' or 'scout'")
     lang: str = Field(description="ISO 639-1 language code")
     title: str = Field(description=f"Overlay headline, at most {MAX_TITLE} characters")
     text: str = Field(description=f"One or two sentences explaining why it matters, at most {MAX_TEXT} characters")
@@ -31,6 +31,19 @@ class Variant(BaseModel):
 
 class Explanation(BaseModel):
     variants: list[Variant]
+
+
+class Core(BaseModel):
+    """The shared reading of a moment that every persona's Personalizer starts from."""
+
+    angle: str = Field(description="In English, one or two sentences: the single reason this moment matters")
+    evidence_keys: list[str] = Field(description="Keys of the evidence items that support the angle")
+
+
+def verify_core(core: Core, moment: Moment, roster_names: set[str]) -> VerifyResult:
+    """The same rules as a variant: grounded numbers, allowed names, known evidence keys."""
+    as_variant = Variant(persona="core", lang="en", title="", text=core.angle, evidence_keys=core.evidence_keys)
+    return verify(Explanation(variants=[as_variant]), moment, [], roster_names)
 
 
 @dataclass

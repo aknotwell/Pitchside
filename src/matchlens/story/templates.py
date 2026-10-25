@@ -27,7 +27,95 @@ TITLES = {
 }
 
 
+def _focus_player(m: Moment) -> str | None:
+    """The player a scout note is about: the one in the headline (the shooter), else the first involved."""
+    people = [m.names[p] for p in m.player_ids if p in m.names]
+    return next((n for n in people if m.headline.startswith(n)), people[0] if people else None)
+
+
+def _recap_numbers(m: Moment):
+    home, away = m.names.get("h", "Home"), m.names.get("a", "Away")
+    xh, xa = _ev(m, "xg_home"), _ev(m, "xg_away")
+    better = home if float(xh or 0) > float(xa or 0) else away
+    return home, away, _ev(m, "score", ""), xh, xa, better
+
+
+def _academy(m: Moment, lang: str) -> str:
+    team = m.team_name or ""
+    k = m.kind
+    if k in ("goal", "big_chance"):
+        passes, dur = _ev(m, "chain_passes"), _ev(m, "chain_duration_s")
+        if _ev(m, "started_from", "") == "turnover" and int(passes) <= 1 and not dur:
+            return {"es": f"Recuperar y atacar: {team} disparó nada más robar. En el entrenamiento, mira hacia delante al recuperar.",
+                    "ja": f"奪ったら前へ。{team}はボールを奪ってすぐにシュート。練習では、奪った瞬間に前を見よう。"}.get(
+                lang, f"Win it and go: {team} shot the moment they won the ball. In training, look forward as soon as you get it back.")
+        if _ev(m, "started_from", "") == "turnover" and int(passes) <= 1:
+            return {"es": f"Recuperar y atacar: {team} disparó {dur} s después de robar. En el entrenamiento, mira hacia delante nada más recuperar.",
+                    "ja": f"奪ったら前へ。{team}はボール奪取から{dur}秒でシュート。練習では、奪った瞬間に前を見よう。"}.get(
+                lang, f"Win it and go: {team} shot {dur} s after winning the ball. In training, look forward the moment you get it back.")
+        return {"es": f"La paciencia premia: {team} encadenó {passes} pases antes del disparo. Practica mover el balón hasta que se abra el espacio.",
+                "ja": f"我慢のパス回し。{team}は{passes}本のパスでシュートまで運んだ。スペースが空くまでボールを動かす練習をしよう。"}.get(
+            lang, f"Patience pays: {team} strung {passes} passes together before the shot. Practise moving the ball until the space opens.")
+    if k == "momentum_swing":
+        return {"es": f"{team} manda porque sigue atacando los espacios. Lección: cuando tu equipo domina, mantén el ritmo alto.",
+                "ja": f"{team}がスペースを突き続けて主導権を握っている。優勢な時こそテンポを落とさないこと。"}.get(
+            lang, f"{team} are on top because they keep attacking the space. Lesson: when your team has the upper hand, keep the tempo high.")
+    if k == "pressing_surge":
+        ppda = _ev(m, "ppda_8m")
+        return {"es": f"{team} presiona en bloque: PPDA de {ppda}. Lección: presiona en equipo; el jugador más cercano da la señal.",
+                "ja": f"{team}が連動してプレス(PPDA {ppda})。一番近い選手が合図を出し、チーム全体で奪いに行こう。"}.get(
+            lang, f"{team} press as one: PPDA down to {ppda}. Lesson: press as a unit, and let the nearest player set the trigger.")
+    home, away, score, xh, xa, better = _recap_numbers(m)
+    return {"es": f"{home} {score} {away}. {better} generó mejores ocasiones (xG {xh} a {xa}). Lección: las buenas ocasiones nacen de buenas posiciones.",
+            "ja": f"{home} {score} {away}。{better}が好機で上回った(xG {xh}対{xa})。良いシュートは良いポジションから生まれる。"}.get(
+        lang, f"{home} {score} {away}. {better} made the better chances ({xh} vs {xa} xG). Lesson: good chances come from good positions.")
+
+
+def _scout(m: Moment, lang: str) -> str:
+    team = m.team_name or ""
+    k = m.kind
+    have = {e.key for e in m.evidence}
+    if k in ("goal", "big_chance"):
+        who, xg = _focus_player(m) or team, _ev(m, "xg")
+        speed = _ev(m, "shot_speed_kmh") if "shot_speed_kmh" in have else None
+        if lang == "es":
+            body = (f"{who} convirtió una ocasión de xG {xg}." if k == "goal"
+                    else f"{who} llegó a una ocasión de xG {xg} sin acertar.")
+            body += f" Disparo a {speed} km/h." if speed else ""
+            return body + (" A destacar: el desmarque y la definición." if k == "goal" else " Lo positivo: el movimiento para generarla.")
+        if lang == "ja":
+            body = f"{who}がxG {xg}の決定機を決めた。" if k == "goal" else f"{who}がxG {xg}の決定機に絡むも決めきれず。"
+            body += f"シュート速度{speed} km/h。" if speed else ""
+            return body + ("動き出しとフィニッシュに注目。" if k == "goal" else "チャンスを作った動きは評価できる。")
+        body = f"{who} converted a {xg} xG chance." if k == "goal" else f"{who} got on the end of a {xg} xG chance but didn't convert."
+        body += f" Shot at {speed} km/h." if speed else ""
+        return body + (" Note the timing of the run and a clean strike." if k == "goal" else " The movement to create it is the positive.")
+    if k == "momentum_swing":
+        threat, opp = _ev(m, "threat_10m"), _ev(m, "opp_threat_10m")
+        return {"es": f"Bloque de {team}: amenaza {threat} frente a {opp} en 10 minutos. Su línea ofensiva gana los duelos.",
+                "ja": f"{team}の攻撃陣が直近10分で脅威度{threat}対{opp}。前線が局面で優位に立っている。"}.get(
+            lang, f"{team} attack: {threat} threat to {opp} over 10 minutes. The front line is winning its duels.")
+    if k == "pressing_surge":
+        ppda = _ev(m, "ppda_8m")
+        return {"es": f"Presión de {team}: PPDA {ppda} en 8 minutos. Muestra intensidad y coordinación de los delanteros.",
+                "ja": f"{team}の前線が直近8分でPPDA {ppda}。運動量と連動したプレスが光る。"}.get(
+            lang, f"{team} front line: PPDA {ppda} over 8 minutes. Shows work rate and coordinated triggers from the forwards.")
+    home, away, score, xh, xa, _ = _recap_numbers(m)
+    who = _focus_player(m)
+    if who and "top_speed_kmh" in have:
+        speed = _ev(m, "top_speed_kmh")
+        return {"es": f"{home} {score} {away}. Físico destacado: {who}, velocidad máxima {speed} km/h.",
+                "ja": f"{home} {score} {away}。身体能力で目立ったのは{who}(最高速度{speed} km/h)。"}.get(
+            lang, f"{home} {score} {away}. Standout athlete: {who}, top speed {speed} km/h.")
+    return {"es": f"{home} {score} {away}. xG {xh} a {xa}.", "ja": f"{home} {score} {away}。xG {xh}対{xa}。"}.get(
+        lang, f"{home} {score} {away}. Expected goals {xh} to {xa}.")
+
+
 def _text(m: Moment, persona: str, lang: str) -> str:
+    if persona == "academy":
+        return _academy(m, lang)
+    if persona == "scout":
+        return _scout(m, lang)
     team = m.team_name or ""
     k = m.kind
     if k in ("goal", "big_chance"):
@@ -87,13 +175,21 @@ KEYS = {
 }
 
 
+SCOUT_KEYS = {"goal": ["shot_speed_kmh"], "big_chance": ["shot_speed_kmh"],
+              "half_time": ["top_speed_kmh"], "full_time": ["top_speed_kmh"]}
+
+
 def fallback_explanation(m: Moment, required: list[tuple[str, str]]) -> Explanation:
     have = {e.key for e in m.evidence}
-    keys = [k for k in KEYS[m.kind] if k in have] or [e.key for e in m.evidence[:2]]
+
+    def keys(persona: str) -> list[str]:
+        want = KEYS[m.kind] + (SCOUT_KEYS.get(m.kind, []) if persona == "scout" else [])
+        return [k for k in want if k in have] or [e.key for e in m.evidence[:2]]
+
     return Explanation(
         variants=[
             Variant(persona=p, lang=lang, title=TITLES[m.kind].get(lang, TITLES[m.kind]["en"]),
-                    text=_text(m, p, lang), evidence_keys=keys)
+                    text=_text(m, p, lang), evidence_keys=keys(p))
             for p, lang in required
         ]
     )

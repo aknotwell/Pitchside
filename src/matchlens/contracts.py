@@ -35,9 +35,9 @@ EventType = Literal[
     "save",
 ]
 
-Persona = Literal["analyst", "casual"]
+Persona = Literal["analyst", "casual", "academy", "scout"]
 LANGUAGES: tuple[str, ...] = ("en", "es", "ja")
-PERSONAS: tuple[Persona, ...] = ("analyst", "casual")
+PERSONAS: tuple[Persona, ...] = ("analyst", "casual", "academy", "scout")
 
 
 class Player(BaseModel):

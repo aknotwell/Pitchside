@@ -103,7 +103,7 @@ def get_moments(match_id: str) -> str:
 
 @app.mcp_tool()
 def get_overlays(match_id: str, persona: str = "analyst", lang: str = "en") -> str:
-    """Overlay cues shown to a viewer (persona 'analyst' or 'casual', lang 'en', 'es' or 'ja'),
+    """Overlay cues shown to a viewer (persona 'analyst', 'casual', 'academy' or 'scout', lang 'en', 'es' or 'ja'),
     including whether each was written by an agent and verified."""
     import json
 

@@ -5,15 +5,15 @@
 > **Live demo:** <https://wonderful-field-07003a80f.4.azurestaticapps.net> · **API:** <https://ca-api-bhdr37v3onmcs.thankfulglacier-9473c5b7.eastus2.azurecontainerapps.io/api/health> · **Video (< 2 min):** *coming soon*
 
 Synthetic match events and 10 Hz tracking stream in. Timed, **verified** overlays stream
-out. They explain *why* each moment matters, written differently for an analyst and a
-casual fan, in English, Spanish and Japanese. Under the hood, every hop is an
+out. They explain *why* each moment matters, written differently for an analyst, a
+casual fan, an academy coach and a scout, in English, Spanish and Japanese. Under the hood, every hop is an
 event on Azure, every number traces to code-computed evidence, and a killed
 agent resumes exactly where it stopped.
 
 ## Judging this? Start here
 
 1. Open the **live demo**. It picks the most recent match.
-2. Toggle **Fan / Analyst** and **EN / ES / 日本語**. Every overlay changes register
+2. Toggle **Fan / Analyst / Academy / Scout** and **EN / ES / 日本語**. Every overlay changes register
    and language.
 3. Click **Why?** on any overlay to see the evidence pack. The model may only use
    these numbers; a code verifier rejects anything else.
@@ -66,9 +66,9 @@ flowchart LR
 |---|---|
 | **Ingest** | A seeded, agent-based simulator (ACA Job) plays a fictional match at 1–30× speed into Event Hubs. Players have roles and 1–99 traits and teams have tactical styles; pressure, tackles, interceptions and chances emerge from positions. Events (passes, carries, pressures, tackles, interceptions, shots with xG and shot speed, fouls, cards, subs) plus 10 Hz tracking of 22 players and the ball |
 | **Interpret** | Deterministic, idempotent metrics: xG, possession, pass accuracy, pass length, a pass difficulty rating (with a "pass of quality" tag on screen), shot speed, final-third entries, PPDA (match and rolling), momentum, a control-vs-chaos index, distance, top speed and sprints. A replay gives byte-identical state (tested) |
-| **Explain** | Detectors raise moments (goal, big chance, momentum swing, pressing surge, half time and full time) with an **evidence pack**. An Agent Framework workflow (Editor → Explainer → Verifier → Director) writes the *why* |
+| **Explain** | Detectors raise moments (goal, big chance, momentum swing, pressing surge, half time and full time) with an **evidence pack**. An Agent Framework workflow (Editor → Explainer → Personalizers → Verifier → Director) writes the *why* |
 | **Render** | Machine-readable `OverlayCue`s with `display_at_s`, TTL, priority and template, timed against a 10 s broadcast delay so agent latency is invisible. Shown on a live 2D pitch with lower-thirds, player speed tags and recap panels |
-| **Personalize** | Analyst vs casual register, three languages (one non-Latin), all from one structured model call per moment. Recaps are also **voiced** in each language |
+| **Personalize** | Four registers (analyst, casual fan, academy coach, scout) in three languages (one non-Latin). One Personalizer agent per persona runs concurrently from a shared angle, and each persona is verified on its own. Recaps are also **voiced** in each language |
 
 ### Three latency paths
 
