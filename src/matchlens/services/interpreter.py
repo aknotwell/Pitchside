@@ -6,11 +6,13 @@
   replayed after a crash is de-duplicated (event ids, tracking timestamps, deterministic cue ids).
 * Hot path: template cues are written straight to Cosmos ``cues`` (the change feed fans them out).
 * Warm path: moments go to Service Bus (session = match id, so each match is explained in order).
+* Every live tick is also appended to the match's recording, so late joiners can scrub back to kick-off.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import pickle
@@ -20,7 +22,7 @@ import time
 from opentelemetry import trace
 
 from matchlens.azure_io.common import async_credential, create_once, settings, setup_telemetry
-from matchlens.contracts import StreamMessage, frames_group
+from matchlens.contracts import RECORDINGS_CONTAINER, StreamMessage, frames_group, recording_blob
 from matchlens.interpret.state import MatchInterpreter, Output
 
 log = logging.getLogger("matchlens.interpreter")
@@ -71,6 +73,7 @@ class InterpreterService:
 
             self.eventgrid = EventGridPublisherClient(os.environ["EVENTGRID_ENDPOINT"], self.cred)
         self.snapshots = self.blobs.get_container_client(s.checkpoint_container)
+        self.recordings = self.blobs.get_container_client(RECORDINGS_CONTAINER)
         store = BlobCheckpointStore(blob_account_url=s.storage_blob_endpoint, container_name=s.checkpoint_container,
                                     credential=self.cred)
         consumer = EventHubConsumerClient(fully_qualified_namespace=s.eventhub_fqdn, eventhub_name=s.eventhub_name,
@@ -212,6 +215,7 @@ class InterpreterService:
                 frames = [frames[int(k * step)] for k in range(MAX_FRAMES_PER_TICK - 1)] + [frames[-1]]
             tick = {"type": "tick", "matchId": mid, "frames": frames, "state": self.pending_state.pop(mid, None)}
             self.last_tick[mid] = now
+            tasks.append(self._record(mid, tick))  # even when back-pressure drops the publish below
             self._publish_nowait(frames_group(mid), tick)
         if sb_msgs:
             tasks.append(self.sender.send_messages(sb_msgs))
@@ -226,6 +230,23 @@ class InterpreterService:
         for r in results:
             if isinstance(r, Exception):
                 log.warning("output failed: %s", r)
+
+    async def _record(self, match_id: str, tick: dict) -> None:
+        """Append one tick to the match's recording. It holds only what was broadcast, never a
+        re-simulation, so it can't reveal the future. A failover may repeat frames; the player dedupes."""
+        from azure.core import MatchConditions
+        from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+
+        blob = self.recordings.get_blob_client(recording_blob(match_id))
+        line = (json.dumps(tick, separators=(",", ":")) + "\n").encode()
+        try:
+            await blob.append_block(line)
+        except ResourceNotFoundError:
+            try:
+                await blob.create_append_blob(match_condition=MatchConditions.IfMissing)
+            except ResourceExistsError:
+                pass  # another replica got there first
+            await blob.append_block(line)
 
     def _publish_nowait(self, group: str, payload: dict) -> None:
         if self.inflight >= MAX_INFLIGHT_PUBLISHES:
