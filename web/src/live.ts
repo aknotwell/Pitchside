@@ -1,156 +1,153 @@
-import { useEffect, useRef, useState } from "react";
-import { api } from "./api";
-import { sampleFrames } from "./sample";
-import type { Cue, Frame, Lang, MatchState, Persona } from "./types";
+import { useEffect, useRef } from "react";
+import { API, api } from "./api";
+import type { Timeline } from "./playback";
+import { type Feed, type Live, usePlayer } from "./player";
+import { lastAtOrBefore, mergeByTime } from "./sample";
+import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona } from "./types";
 
 /** Broadcast delay in wall-clock seconds: the player shows the match this far behind live, so
  * explanations written by agents (a few seconds of latency) land exactly on the play they explain. */
 export const BROADCAST_DELAY_S = 10;
 
+/** The simulator's position as last heard: at wall time `wall` it was at `matchT`, moving at `speed`. */
 interface Clock { matchT: number; wall: number; speed: number }
+interface Heard { wall: number; t: number }
 
-export interface Live {
-  connected: boolean;
-  playhead: number;
-  liveEdge: number;
-  frame: Frame | null;
-  state: MatchState | null;
-  cues: Cue[];
-  history: Cue[];
-  speed: number;
-  /** Frame at this exact instant (for 60 fps renderers); null until the feed starts. */
-  sample: () => Frame | null;
+/** One broadcast tick, as sent on the socket and kept in the match's recording. */
+interface Tick { type: "tick"; frames?: Frame[]; state?: MatchState | null }
+
+interface LiveFeed extends Feed {
+  states: MatchState[];
+  meta: MatchMeta | null;
+  clock: Clock | null;
+  /** Recent socket ticks: their slope is the simulator's pace. */
+  heard: Heard[];
+  /** Pace read from the recording, used until the socket has been heard long enough to measure it. */
+  paceHint: number;
+  byId: Map<string, Cue>;
+  recording: "none" | "loading" | "loaded";
+}
+
+const byT = (f: Frame) => f.t_s;
+const byClock = (s: MatchState) => s.clockS;
+const wallNow = () => performance.now() / 1000;
+
+function liveFeed(): LiveFeed {
+  const f: LiveFeed = {
+    connected: false, frames: [], states: [], meta: null, clock: null, heard: [], paceHint: 1, byId: new Map(), late: [], recording: "none",
+    get cues() { return f.byId.values(); },
+    shows: () => true,
+    timeline: (now) => timelineAt(f, now),
+    stateAt: (t) => {
+      const s = lastAtOrBefore(f.states, t + 0.5, byClock) ?? f.states[0];
+      return s ? { ...s, meta: f.meta ?? s.meta } : null;
+    },
+  };
+  return f;
+}
+
+/** From the first recorded frame to the live edge less the broadcast delay, never past the newest frame. */
+function timelineAt(f: LiveFeed, now: number): Timeline | null {
+  const fs = f.frames;
+  if (!fs.length) return null;
+  const start = fs[0].t_s, newest = fs[fs.length - 1].t_s, c = f.clock;
+  const end = c ? c.matchT + (now - c.wall - BROADCAST_DELAY_S) * c.speed : Infinity;
+  return end < newest ? { start, end: Math.max(start, end), live: true, rate: c!.speed } : { start, end: newest, live: true, rate: 0 };
+}
+
+const pace = (matchS: number, wallS: number) => Math.min(60, Math.max(0.5, matchS / wallS));
+
+/** Pace is the slope over the last dozen or so seconds of ticks, not tick to tick: ticks arrive 1 to
+ *  1.5 s apart carrying whatever frames piled up, so a single interval swings the estimate. */
+function onFrames(f: LiveFeed, incoming: Frame[]) {
+  if (!incoming.length) return;
+  const newest = incoming[incoming.length - 1].t_s;
+  const now = wallNow();
+  if (!f.clock || newest > f.clock.matchT) {
+    f.heard = [...f.heard.filter((h) => now - h.wall < 15), { wall: now, t: newest }];
+    const first = f.heard[0];
+    f.clock = { matchT: newest, wall: now, speed: now - first.wall >= 3 ? pace(newest - first.t, now - first.wall) : f.paceHint };
+  }
+  f.frames = mergeByTime(f.frames, incoming, byT);
+}
+
+/** Everything broadcast before this viewer joined. Ticks are about a second of wall time apart, so the
+ *  tail also gives a first estimate of the simulator's pace, sparing the socket estimate a slow warm-up. */
+async function loadRecording(f: LiveFeed, matchId: string) {
+  f.recording = "loading";
+  try {
+    const r = await fetch(`${API}/api/matches/${matchId}/recording`);
+    if (!r.ok) throw new Error(`${r.status}`);
+    const ticks: Tick[] = (await r.text()).split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const frames = ticks.flatMap((t) => t.frames ?? []).sort((a, b) => a.t_s - b.t_s);
+    f.frames = mergeByTime(f.frames, frames, byT);
+    f.states = mergeByTime(f.states, ticks.flatMap((t) => (t.state ? [t.state] : [])).sort((a, b) => a.clockS - b.clockS), byClock);
+    const ends = ticks.flatMap((t) => (t.frames?.length ? [t.frames[t.frames.length - 1].t_s] : []));
+    const k = Math.min(10, ends.length - 1);
+    if (k >= 2 && !f.states[f.states.length - 1]?.ended) {
+      f.paceHint = pace(ends[ends.length - 1] - ends[ends.length - 1 - k], k);
+      if (!f.clock) f.clock = { matchT: ends[ends.length - 1], wall: wallNow(), speed: f.paceHint };
+      else if (f.heard.length < 2 || f.clock.wall - f.heard[0].wall < 3) f.clock = { ...f.clock, speed: f.paceHint };
+    }
+    f.recording = "loaded";
+  } catch (e) {
+    f.recording = "none";  // retried on the next socket open
+    console.warn("recording load failed", e);
+  }
 }
 
 export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lang): Live {
-  const frames = useRef<Frame[]>([]);
-  const states = useRef<MatchState[]>([]);
-  const allCues = useRef<Map<string, Cue>>(new Map());
-  const shownAt = useRef<Map<string, number>>(new Map());
-  const clock = useRef<Clock | null>(null);
-  const sampler = useRef<() => Frame | null>(() => null);
-  const sample = useRef(() => sampler.current()).current;
-  const [live, setLive] = useState<Live>({ connected: false, playhead: 0, liveEdge: 0, frame: null, state: null, cues: [], history: [], speed: 1, sample });
+  const feed = useRef<LiveFeed | null>(null);
+
+  useEffect(() => {  // frames, states and the recording outlive a switch of viewer or language
+    if (!matchId) return;
+    const f = liveFeed();
+    feed.current = f;
+    api.match(matchId).then((st) => {
+      f.meta = st.meta ?? null;
+      f.states = mergeByTime(f.states, [st], byClock);
+    }).catch(() => {});
+    return () => { if (feed.current === f) feed.current = null; };
+  }, [matchId]);
 
   useEffect(() => {
-    if (!matchId) return;
+    const f = feed.current;
+    if (!matchId || !f) return;
     let ws: WebSocket | null = null;
     let stopped = false;
-    frames.current = [];
-    states.current = [];
-    allCues.current = new Map();
-    shownAt.current = new Map();
-    clock.current = null;
-
-    const onFrames = (incoming: Frame[]) => {
-      if (!incoming.length) return;
-      const last = incoming[incoming.length - 1];
-      const now = performance.now() / 1000;
-      const c = clock.current;
-      if (c && last.t_s > c.matchT) {
-        const inst = (last.t_s - c.matchT) / Math.max(0.2, now - c.wall);
-        const speed = Math.min(60, Math.max(0.5, 0.8 * c.speed + 0.2 * inst));
-        clock.current = { matchT: last.t_s, wall: now, speed };
-      } else if (!c) {
-        clock.current = { matchT: last.t_s, wall: now, speed: 1 };
-      }
-      frames.current.push(...incoming);
-      const cutoff = last.t_s - 600;
-      if (frames.current.length > 4000) frames.current = frames.current.filter((f) => f.t_s >= cutoff);
-    };
-
+    f.byId = new Map();
+    f.late = [];
     (async () => {
       try {
-        const [st, hist] = await Promise.all([api.match(matchId).catch(() => null), api.cues(matchId, persona, lang).catch(() => ({ cues: [] }))]);
-        if (st) states.current.push(st);
-        for (const c of hist.cues) {
-          allCues.current.set(c.id, c);
-          shownAt.current.set(c.id, -1); // history: never pops up again
-        }
+        const hist = await api.cues(matchId, persona, lang).catch(() => ({ cues: [] as Cue[] }));
+        for (const c of hist.cues) f.byId.set(c.id, c);
         const { url } = await api.negotiate(matchId, persona, lang);
         if (stopped) return;
         ws = new WebSocket(url);
-        ws.onopen = () => setLive((l) => ({ ...l, connected: true }));
-        ws.onclose = () => setLive((l) => ({ ...l, connected: false }));
+        ws.onopen = () => {
+          f.connected = true;
+          // Socket first, then the recording: whatever airs while it downloads arrives on the socket
+          if (f.recording === "none") void loadRecording(f, matchId);
+        };
+        ws.onclose = () => { f.connected = false; };
         ws.onmessage = (ev) => {
           try {
             let msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
             if (typeof msg === "string") msg = JSON.parse(msg); // tolerate double-encoded payloads
             if (msg.type === "tick") {
-              onFrames((msg.frames ?? []) as Frame[]);
-              if (msg.state) states.current.push(msg.state as MatchState);
-            } else if (msg.type === "frames") onFrames(msg.frames as Frame[]);
-            else if (msg.type === "state") states.current.push(msg.state as MatchState);
-            else if (msg.type === "cue") allCues.current.set(msg.cue.id, msg.cue as Cue);
+              onFrames(f, (msg.frames ?? []) as Frame[]);
+              if (msg.state) f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
+            } else if (msg.type === "frames") onFrames(f, msg.frames as Frame[]);
+            else if (msg.type === "state") f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
+            else if (msg.type === "cue") { f.byId.set(msg.cue.id, msg.cue as Cue); f.late.push(msg.cue as Cue); }
           } catch { /* ignore non-JSON */ }
         };
       } catch (e) {
         console.warn("live connect failed", e);
       }
     })();
-
-    const playheadAt = (now: number) => {
-      const c = clock.current, fs = frames.current;
-      if (!c || !fs.length) return null;
-      const liveEdge = c.matchT + (now - c.wall) * c.speed;
-      return { liveEdge, playhead: Math.max(fs[0].t_s, liveEdge - BROADCAST_DELAY_S * c.speed) };
-    };
-    sampler.current = () => {
-      const ph = playheadAt(performance.now() / 1000);
-      return ph ? sampleFrames(frames.current, ph.playhead) : null;
-    };
-
-    let raf = 0;
-    let lastPaint = 0;
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
-      const nowMs = performance.now();
-      if (nowMs - lastPaint < 66) return; // ~15 fps is plenty for a 2 Hz feed
-      lastPaint = nowMs;
-      const now = nowMs / 1000;
-      const c = clock.current;
-      const fs = frames.current;
-      let frame: Frame | null = null;
-      let playhead = 0;
-      let liveEdge = 0;
-      const ph = playheadAt(now);
-      if (ph) {
-        ({ liveEdge, playhead } = ph);
-        frame = sampleFrames(fs, playhead);
-      }
-      // State: latest doc at or before the playhead (or the newest if we have no frames yet)
-      const sts = states.current;
-      let state: MatchState | null = sts.length ? sts[sts.length - 1] : null;
-      if (frame) {
-        for (let k = sts.length - 1; k >= 0; k--) {
-          if (sts[k].clockS <= playhead + 0.5) { state = { ...sts[k], meta: sts[0].meta ?? sts[k].meta }; break; }
-        }
-        if (state && !state.meta && sts[0]?.meta) state = { ...state, meta: sts[0].meta };
-      }
-      // Cues: show once the playhead reaches display_at_s, for ttl wall seconds
-      const active: Cue[] = [];
-      const history: Cue[] = [];
-      for (const cue of allCues.current.values()) {
-        const shown = shownAt.current.get(cue.id);
-        if (shown === undefined && frame && cue.display_at_s <= playhead) shownAt.current.set(cue.id, now);
-        const s = shownAt.current.get(cue.id);
-        if (s !== undefined) {
-          history.push(cue);
-          if (s > 0 && now - s < cue.ttl_s) active.push(cue);
-        }
-      }
-      history.sort((a, b) => b.display_at_s - a.display_at_s);
-      active.sort((a, b) => a.priority - b.priority);
-      setLive((l) => ({ ...l, playhead, liveEdge, frame, state, cues: active, history: history.slice(0, 40), speed: c?.speed ?? 1 }));
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      stopped = true;
-      cancelAnimationFrame(raf);
-      sampler.current = () => null;
-      ws?.close();
-    };
+    return () => { stopped = true; ws?.close(); f.connected = false; };
   }, [matchId, persona, lang]);
 
-  return live;
+  return usePlayer(feed, matchId, true, 1);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  displayClock, goLive, nearestSpeed, pause, play, playheadAt, positionAt, rebase, type ReplayEvent, scoreboardAt, seek, setSpeed,
+  crossed, displayClock, goLive, nearestSpeed, pause, play, playheadAt, positionAt, rebase, type ReplayEvent, scoreboardAt, seek, setSpeed,
   settle, speedOf, type Timeline, togglePause, type Transport,
 } from "./playback";
 
@@ -166,5 +166,20 @@ describe("transport", () => {
 
   it("going live from a replay-like pause resumes playback", () => {
     expect(goLive(at(10, 3, true), 100, live())).toMatchObject({ paused: false, followLive: true });
+  });
+});
+
+describe("crossed", () => {
+  const cues = [10, 20, 30].map((display_at_s) => ({ id: `c${display_at_s}`, display_at_s }));
+
+  it("airs cues the playhead passes while playing", () => {
+    expect(crossed(cues, 9, 10).map((c) => c.id)).toEqual(["c10"]);
+    expect(crossed(cues, 10, 25).map((c) => c.id)).toEqual(["c20"]);
+    expect(crossed(cues, 25, 25)).toEqual([]);  // paused
+  });
+
+  it("airs nothing skipped by a jump or passed again going backwards", () => {
+    expect(crossed(cues, null, 35)).toEqual([]);
+    expect(crossed(cues, 35, 5)).toEqual([]);
   });
 });

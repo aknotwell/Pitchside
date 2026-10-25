@@ -44,3 +44,24 @@ export function sampleFrames(fs: Frame[], t: number): Frame | null {
     restart: a.restart,
   };
 }
+
+/** Merges `incoming` into `sorted` by `key`, keeping the copy already held when a time repeats (a
+ *  recording and the socket overlap; a failover can resend). The common case, newer items, appends. */
+export function mergeByTime<T>(sorted: T[], incoming: T[], key: (x: T) => number): T[] {
+  if (!incoming.length) return sorted;
+  const last = sorted.length ? key(sorted[sorted.length - 1]) : -Infinity;
+  if (incoming.every((x, i) => key(x) > (i ? key(incoming[i - 1]) : last))) { sorted.push(...incoming); return sorted; }
+  const byTime = new Map<number, T>();
+  for (const x of [...incoming, ...sorted]) byTime.set(key(x), x);
+  return [...byTime.values()].sort((a, b) => key(a) - key(b));
+}
+
+/** Last item at or before `t` in a list sorted by `key`, or null. */
+export function lastAtOrBefore<T>(sorted: T[], t: number, key: (x: T) => number): T | null {
+  let lo = 0, hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (key(sorted[mid]) > t) hi = mid; else lo = mid + 1;
+  }
+  return lo ? sorted[lo - 1] : null;
+}

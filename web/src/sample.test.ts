@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sampleFrames } from "./sample";
+import { lastAtOrBefore, mergeByTime, sampleFrames } from "./sample";
 import type { Frame } from "./types";
 
 const frame = (t_s: number, x: number, ball: [number, number, number] = [x, 0, 0], players = [{ id: "h1", x, y: 0 }]): Frame =>
@@ -46,5 +46,32 @@ describe("sampleFrames", () => {
     expect(sampleFrames(fs, 0.5)!.restart).toEqual(corner);
     expect(sampleFrames(fs, 1.5)!.restart).toEqual(corner);
     expect(sampleFrames(fs, 2.5)!.restart).toBeNull();
+  });
+});
+
+describe("mergeByTime", () => {
+  const t = (x: { t: number }) => x.t;
+  const items = (...ts: number[]) => ts.map((x) => ({ t: x, src: "held" }));
+
+  it("appends newer items", () => {
+    expect(mergeByTime(items(0, 1), items(2, 3), t).map(t)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("slots a recording in before what the socket already delivered, without duplicates", () => {
+    const merged = mergeByTime(items(5, 6), [0, 1, 5, 2, 6].map((x) => ({ t: x, src: "recording" })), t);
+    expect(merged.map(t)).toEqual([0, 1, 2, 5, 6]);
+    expect(merged.filter((x) => x.t >= 5).every((x) => x.src === "held")).toBe(true);
+  });
+});
+
+describe("lastAtOrBefore", () => {
+  const xs = [0, 5, 10].map((clockS) => ({ clockS }));
+  const k = (x: { clockS: number }) => x.clockS;
+
+  it("finds the latest at or before t, in either direction", () => {
+    expect(lastAtOrBefore(xs, 7, k)).toEqual({ clockS: 5 });
+    expect(lastAtOrBefore(xs, 10, k)).toEqual({ clockS: 10 });
+    expect(lastAtOrBefore(xs, 2, k)).toEqual({ clockS: 0 });
+    expect(lastAtOrBefore(xs, -1, k)).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import { Squads } from "./components/Squads";
 import { Stats } from "./components/Stats";
 import { WhyDrawer } from "./components/WhyDrawer";
 import { BROADCAST_DELAY_S, useLiveMatch } from "./live";
+import { SPEEDS } from "./playback";
 import { useReplay } from "./replay";
 import { LAB_META, labSample } from "./lab";
 import type { Cue, Lang, MatchState, MatchSummary, Persona } from "./types";
@@ -64,13 +65,11 @@ function Main({ params }: { params: URLSearchParams }) {
   const [cam, setCam] = useState<CamMode>((params.get("cam") as CamMode) || "broadcast");
   const [replays, setReplays] = useState<Awaited<ReturnType<typeof api.replays>>["replays"]>([]);
   const [replayId, setReplayId] = useState<string | null>(params.get("replay"));
-  const [replaySpeed, setReplaySpeed] = useState(4);
-  const [replayPaused, setReplayPaused] = useState(false);
   const [finalState, setFinalState] = useState<MatchState | null>(null);
   const liveFeed = useLiveMatch(replayId ? null : matchId, persona, lang);
-  const replayFeed = useReplay(replayId, persona, lang, replaySpeed, finalState, replayPaused);
+  const replayFeed = useReplay(replayId, persona, lang, finalState);
   const live = replayId ? replayFeed : liveFeed;
-  const paused = !!replayId && replayPaused;
+  const { paused } = live;
 
   useEffect(() => {
     api.replays().then((r) => setReplays(r.replays)).catch(() => {});
@@ -87,11 +86,11 @@ function Main({ params }: { params: URLSearchParams }) {
       if (e.key !== " " || e.repeat || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing || e.defaultPrevented) return;
       if (e.target instanceof Element && e.target.closest("input,textarea,select,button,a[href],audio,video,[contenteditable]")) return;
       e.preventDefault();
-      setReplayPaused((p) => !p);
+      replayFeed.controls.togglePause();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [replayId]);
+  }, [replayId, replayFeed.controls]);
 
   useEffect(() => {
     let alive = true;
@@ -121,16 +120,16 @@ function Main({ params }: { params: URLSearchParams }) {
         <h1>MatchLens <small>live explain layer</small></h1>
         <MatchPicker matches={matches} replays={replays} matchId={matchId} replayId={replayId}
                      onMatch={(id) => { setReplayId(null); setMatchId(id); }}
-                     onReplay={(id) => { setReplayId(id); setReplayPaused(false); }} />
+                     onReplay={setReplayId} />
         {replayId && (
           <>
-            <Dropdown label={`${replaySpeed}× replay`} ariaLabel="Replay speed">
-              {(close) => [1, 4, 10, 20].map((s) => (
-                <Choice key={s} on={s === replaySpeed} onPick={() => { setReplaySpeed(s); close(); }}>{s}× replay</Choice>
+            <Dropdown label={`${live.speed}× replay`} ariaLabel="Replay speed">
+              {(close) => SPEEDS.map((s) => (
+                <Choice key={s} on={s === live.speed} onPick={() => { live.controls.setSpeed(s); close(); }}>{s}× replay</Choice>
               ))}
             </Dropdown>
-            <button aria-label={replayPaused ? "Play replay" : "Pause replay"} title="Space" onClick={() => setReplayPaused((p) => !p)}>
-              {replayPaused ? <><span aria-hidden="true">▶</span> Play</> : <><span aria-hidden="true">❚❚</span> Pause</>}
+            <button aria-label={paused ? "Play replay" : "Pause replay"} title="Space" onClick={live.controls.togglePause}>
+              {paused ? <><span aria-hidden="true">▶</span> Play</> : <><span aria-hidden="true">❚❚</span> Pause</>}
             </button>
           </>
         )}

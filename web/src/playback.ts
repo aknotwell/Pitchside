@@ -66,6 +66,11 @@ export function settle(tr: Transport, now: number, tl: Timeline): Transport {
   return t > tl.end + REPLAY_TAIL_S ? { ...tr, anchor: { ...tr.anchor, wall: now, t0: tl.start } } : tr;
 }
 
+/** Cues the playhead crossed playing forward from `prev` to `cur`. A jump (`prev` null) or a step
+ *  backwards crosses nothing, so seeking doesn't pop up every cue it skipped over. */
+export const crossed = <C extends { display_at_s: number }>(cues: Iterable<C>, prev: number | null, cur: number): C[] =>
+  prev === null || cur < prev ? [] : [...cues].filter((c) => c.display_at_s > prev && c.display_at_s <= cur);
+
 /** Broadcast clock at match time `t`: the simulator's rule (`display_clock` in sim/engine.py), so the
  *  replay clock runs every second instead of jumping from one event's clock to the next. */
 export function displayClock(t: number, period: number, periodStart: number, periodMin: number): string {
