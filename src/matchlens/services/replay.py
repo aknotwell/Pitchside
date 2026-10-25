@@ -78,7 +78,7 @@ async def run_once() -> int:
             await db.get_container_client("runs").upsert_item({
                 "id": f"replay-{mid}", "matchId": mid, "type": "replay", "at": time.time(), "bytes": len(body),
                 "home": data.get("home"), "away": data.get("away"), "score": data.get("score"),
-                "cues": len(cues), "frames": len(pkg["frames"])})
+                "cues": len(cues), "frames": len(pkg["frames"]), "ttl": -1})  # the index outlives the container's 7-day TTL
             await q.delete_message(msg)
             log.info("replay %s: %d frames, %d cues, %d KB", mid, len(pkg["frames"]), len(cues), len(body) // 1024)
             done += 1
