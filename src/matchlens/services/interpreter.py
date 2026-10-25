@@ -33,6 +33,8 @@ TICK_EVERY_S = 1.0  # one coalesced Web PubSub message per match per second
 MAX_FRAMES_PER_TICK = 15
 MAX_INFLIGHT_PUBLISHES = 64  # live ticks are ephemeral: drop them rather than slow the stream down
 PUBLISH_TIMEOUT_S = 3.0
+MAX_INFLIGHT_RECORDINGS = 64  # same rule for recordings: a slow append must not hold up the batch loop
+RECORD_TIMEOUT_S = 5.0
 
 
 class InterpreterService:
@@ -46,6 +48,8 @@ class InterpreterService:
         self.last_tick: dict[str, float] = {}
         self.inflight = 0
         self.dropped_ticks = 0
+        self.recording_inflight = 0
+        self.lost_records = 0
         self.bg: set[asyncio.Task] = set()
 
     async def start(self) -> None:
@@ -215,7 +219,7 @@ class InterpreterService:
                 frames = [frames[int(k * step)] for k in range(MAX_FRAMES_PER_TICK - 1)] + [frames[-1]]
             tick = {"type": "tick", "matchId": mid, "frames": frames, "state": self.pending_state.pop(mid, None)}
             self.last_tick[mid] = now
-            tasks.append(self._record(mid, tick))  # even when back-pressure drops the publish below
+            self._record_nowait(mid, tick)  # even when back-pressure drops the publish below
             self._publish_nowait(frames_group(mid), tick)
         if sb_msgs:
             tasks.append(self.sender.send_messages(sb_msgs))
@@ -231,7 +235,29 @@ class InterpreterService:
             if isinstance(r, Exception):
                 log.warning("output failed: %s", r)
 
+    def _record_nowait(self, match_id: str, tick: dict) -> None:
+        if self.recording_inflight >= MAX_INFLIGHT_RECORDINGS:
+            self._lost_record("too many appends in flight")
+            return
+        self.recording_inflight += 1
+        task = asyncio.create_task(self._record(match_id, tick))
+        self.bg.add(task)
+        task.add_done_callback(self.bg.discard)
+
+    def _lost_record(self, why: object) -> None:
+        self.lost_records += 1
+        if self.lost_records % 100 == 1:
+            log.warning("recording is failing (%s): %d ticks missing from recordings so far", why, self.lost_records)
+
     async def _record(self, match_id: str, tick: dict) -> None:
+        try:
+            await asyncio.wait_for(self._append(match_id, tick), timeout=RECORD_TIMEOUT_S)
+        except Exception as exc:
+            self._lost_record(repr(exc))
+        finally:
+            self.recording_inflight -= 1
+
+    async def _append(self, match_id: str, tick: dict) -> None:
         """Append one tick to the match's recording. It holds only what was broadcast, never a
         re-simulation, so it can't reveal the future. A failover may repeat frames; the player dedupes."""
         from azure.core import MatchConditions

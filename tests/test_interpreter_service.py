@@ -26,12 +26,16 @@ def test_partition_handover_drops_stale_match_state():
 
 
 class FakeAppendBlob:
-    def __init__(self, store: dict, name: str, fail: bool = False):
-        self.store, self.name, self.fail = store, name, fail
+    def __init__(self, store: dict, name: str, fail: bool = False, hang: bool = False):
+        self.store, self.name, self.fail, self.hang = store, name, fail, hang
 
     async def append_block(self, data: bytes):
+        import asyncio
+
         from azure.core.exceptions import ResourceNotFoundError
 
+        if self.hang:
+            await asyncio.Event().wait()  # an SDK stuck retrying
         if self.fail:
             raise OSError("storage is down")
         if self.name not in self.store:
@@ -47,12 +51,12 @@ class FakeAppendBlob:
 
 
 class FakeContainer:
-    def __init__(self, fail: bool = False):
+    def __init__(self, fail: bool = False, hang: bool = False):
         self.blobs: dict[str, bytes] = {}
-        self.fail = fail
+        self.fail, self.hang = fail, hang
 
     def get_blob_client(self, name: str):
-        return FakeAppendBlob(self.blobs, name, self.fail)
+        return FakeAppendBlob(self.blobs, name, self.fail, self.hang)
 
     async def upsert_item(self, doc):
         return doc
@@ -62,6 +66,7 @@ def _emitter(recordings: FakeContainer, inflight: int = 0) -> tuple[InterpreterS
     svc = object.__new__(InterpreterService)
     svc.pending_frames, svc.pending_state, svc.last_tick = {}, {}, {}
     svc.inflight, svc.dropped_ticks, svc.bg = inflight, 0, set()
+    svc.recording_inflight, svc.lost_records = 0, 0
     svc.state, svc.recordings, svc.eventgrid = FakeContainer(), recordings, None
     published = []
 
@@ -105,6 +110,8 @@ async def test_every_tick_is_appended_to_the_match_recording(monkeypatch):
 
 async def test_recording_survives_a_replica_restart_and_backpressure(monkeypatch):
     """A new replica finds the blob already there; a dropped live publish is still recorded."""
+    import asyncio
+
     import matchlens.services.interpreter as interp
 
     rec = FakeContainer()
@@ -112,6 +119,7 @@ async def test_recording_survives_a_replica_restart_and_backpressure(monkeypatch
     svc, published = _emitter(rec, inflight=interp.MAX_INFLIGHT_PUBLISHES)
     monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0))
     await svc._emit([(MatchInterpreter("m1"), _out(30.0, 30.0))])
+    await asyncio.gather(*svc.bg)
 
     assert published == [] and svc.dropped_ticks == 1
     assert [len(ln["frames"]) for ln in _lines(rec)] == [0, 1]
@@ -127,4 +135,36 @@ async def test_a_recording_failure_never_stops_the_live_feed(monkeypatch):
     await svc._emit([(MatchInterpreter("m1"), _out(30.0, 30.0))])
     await asyncio.gather(*svc.bg)
 
+    assert [p[1]["frames"][0]["t_s"] for p in published] == [30.0]
+
+
+async def test_a_stuck_recording_never_holds_up_the_batch(monkeypatch):
+    """The batch loop (and so checkpointing) moves on at once; the append is abandoned after its timeout."""
+    import asyncio
+
+    import matchlens.services.interpreter as interp
+
+    svc, published = _emitter(FakeContainer(hang=True))
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0))
+    monkeypatch.setattr(interp, "RECORD_TIMEOUT_S", 0.05)
+    await asyncio.wait_for(svc._emit([(MatchInterpreter("m1"), _out(30.0, 30.0))]), timeout=0.02)
+    await asyncio.gather(*svc.bg)
+
+    assert [p[1]["frames"][0]["t_s"] for p in published] == [30.0]
+    assert svc.lost_records == 1 and svc.recording_inflight == 0
+
+
+async def test_recordings_past_the_in_flight_cap_are_dropped_and_counted(monkeypatch):
+    import asyncio
+
+    import matchlens.services.interpreter as interp
+
+    rec = FakeContainer()
+    svc, published = _emitter(rec)
+    svc.recording_inflight = interp.MAX_INFLIGHT_RECORDINGS
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0))
+    await svc._emit([(MatchInterpreter("m1"), _out(30.0, 30.0))])
+    await asyncio.gather(*svc.bg)
+
+    assert rec.blobs == {} and svc.lost_records == 1
     assert [p[1]["frames"][0]["t_s"] for p in published] == [30.0]
