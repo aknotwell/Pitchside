@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import gzip
 import logging
 import os
 import re
@@ -14,7 +16,15 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from matchlens.azure_io.common import async_credential, settings, setup_telemetry
-from matchlens.contracts import LANGUAGES, PERSONAS, cue_group, frames_group, state_group
+from matchlens.contracts import (
+    LANGUAGES,
+    PERSONAS,
+    RECORDINGS_CONTAINER,
+    cue_group,
+    frames_group,
+    recording_blob,
+    state_group,
+)
 
 log = logging.getLogger("matchlens.api")
 OPS_PK = "_ops"
@@ -250,12 +260,15 @@ async def replays(request: Request):
     return {"replays": items}
 
 
+MATCH_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
 @app.get("/api/replays/{match_id}")
 async def replay(match_id: str, request: Request):
     from azure.storage.blob.aio import BlobClient
     from fastapi.responses import Response
 
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", match_id):
+    if not MATCH_ID.fullmatch(match_id):
         raise HTTPException(400, "bad match id")
     blob = BlobClient(settings().storage_blob_endpoint, "replays", f"{match_id}.json.gz", credential=request.app.state.cred)
     try:
@@ -265,6 +278,25 @@ async def replay(match_id: str, request: Request):
         raise HTTPException(404, "replay not found") from exc
     return Response(data, media_type="application/json",
                     headers={"Content-Encoding": "gzip", "Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/api/matches/{match_id}/recording")
+async def recording(match_id: str, request: Request):
+    """Every live tick broadcast so far (one JSON line each), so a late joiner can scrub back to kick-off."""
+    from azure.storage.blob.aio import BlobClient
+    from fastapi.responses import Response
+
+    if not MATCH_ID.fullmatch(match_id):
+        raise HTTPException(400, "bad match id")
+    blob = BlobClient(settings().storage_blob_endpoint, RECORDINGS_CONTAINER, recording_blob(match_id),
+                      credential=request.app.state.cred)
+    try:
+        async with blob:
+            data = await (await blob.download_blob()).readall()
+    except Exception as exc:
+        raise HTTPException(404, "recording not found") from exc
+    body = await asyncio.to_thread(gzip.compress, data, 6)
+    return Response(body, media_type="application/x-ndjson", headers={"Content-Encoding": "gzip", "Cache-Control": "no-store"})
 
 
 @app.post("/api/chaos")
