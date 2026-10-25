@@ -441,6 +441,11 @@ class MatchEngine:
                 over = t >= end_t and self.state in (OWNED, DEAD) and self.pending is None
                 if over or t >= end_t + 30 or k >= max_T:
                     break
+            # A restart still pending at the whistle is never taken: don't announce it
+            last, n = frames_restart[-1], len(frames_restart)
+            while last and n and frames_restart[n - 1] == last:
+                n -= 1
+                frames_restart[n] = None
             if self.state == OWNED:
                 self._end_carry(t)
             if self.pending is not None:
