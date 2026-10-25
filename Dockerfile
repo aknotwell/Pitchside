@@ -1,7 +1,8 @@
 # One image for api, interpreter, storyteller and the simulator job.
-# Base image: the official Docker Hub python image via its AWS ECR Public mirror, which avoids
-# Docker Hub's anonymous pull rate limit (429s in CI and azd builds).
-FROM public.ecr.aws/docker/library/python:3.13-slim AS build
+# Base image: the official Docker Hub python image via Google's mirror (mirror.gcr.io), which
+# avoids Docker Hub's anonymous pull rate limit and ECR Public's anonymous data limit (both
+# returned 429s in CI and azd builds).
+FROM mirror.gcr.io/library/python:3.13-slim AS build
 COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -10,7 +11,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --frozen --no-dev
 
-FROM public.ecr.aws/docker/library/python:3.13-slim
+FROM mirror.gcr.io/library/python:3.13-slim
 RUN useradd --create-home --uid 10001 app
 WORKDIR /app
 COPY --from=build /app /app
