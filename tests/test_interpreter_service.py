@@ -43,10 +43,13 @@ class FakeAppendBlob:
         self.store[self.name] += data
 
     async def create_append_blob(self, match_condition=None):
-        from azure.core.exceptions import ResourceExistsError
+        import asyncio
 
+        from azure.core.exceptions import ResourceModifiedError
+
+        await asyncio.sleep(0.01)  # two first appends race here
         if self.name in self.store:
-            raise ResourceExistsError("BlobAlreadyExists")
+            raise ResourceModifiedError("ConditionNotMet")  # what IfMissing returns when the blob appeared
         self.store[self.name] = b""
 
 
@@ -136,6 +139,25 @@ async def test_a_recording_failure_never_stops_the_live_feed(monkeypatch):
     await asyncio.gather(*svc.bg)
 
     assert [p[1]["frames"][0]["t_s"] for p in published] == [30.0]
+
+
+async def test_two_first_appends_racing_to_create_the_blob_both_land(monkeypatch):
+    import asyncio
+
+    import matchlens.services.interpreter as interp
+
+    rec = FakeContainer()
+    svc, _ = _emitter(rec)
+    now = [100.0]
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    it = MatchInterpreter("m1")
+    await svc._emit([(it, _out(0.0, 0.0))])
+    now[0] += interp.TICK_EVERY_S
+    await svc._emit([(it, _out(0.2, 0.2))])
+    await asyncio.gather(*svc.bg)
+
+    assert svc.lost_records == 0
+    assert sorted(ln["frames"][0]["t_s"] for ln in _lines(rec)) == [0.0, 0.2]
 
 
 async def test_a_stuck_recording_never_holds_up_the_batch(monkeypatch):

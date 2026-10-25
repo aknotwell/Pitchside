@@ -261,7 +261,11 @@ class InterpreterService:
         """Append one tick to the match's recording. It holds only what was broadcast, never a
         re-simulation, so it can't reveal the future. A failover may repeat frames; the player dedupes."""
         from azure.core import MatchConditions
-        from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+        from azure.core.exceptions import (
+            ResourceExistsError,
+            ResourceModifiedError,
+            ResourceNotFoundError,
+        )
 
         blob = self.recordings.get_blob_client(recording_blob(match_id))
         line = (json.dumps(tick, separators=(",", ":")) + "\n").encode()
@@ -270,8 +274,8 @@ class InterpreterService:
         except ResourceNotFoundError:
             try:
                 await blob.create_append_blob(match_condition=MatchConditions.IfMissing)
-            except ResourceExistsError:
-                pass  # another replica got there first
+            except (ResourceExistsError, ResourceModifiedError):
+                pass  # another append got there first (IfMissing can fail as 409 or as 412 ConditionNotMet)
             await blob.append_block(line)
 
     def _publish_nowait(self, group: str, payload: dict) -> None:
