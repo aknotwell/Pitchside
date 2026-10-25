@@ -106,3 +106,4 @@ footer { padding: 10px 16px; color: var(--muted); font-size: 12px; border-top: 1
 .viewbar .seg button.on { background: var(--accent); }
 .stage.three { aspect-ratio: 3 / 2; }
 .stage.three .pitch3d { position: absolute; inset: 0; aspect-ratio: auto; height: 100%; }
+.route { font-size: 12px; color: var(--muted); } .route.reflex { color: var(--ai); }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -13,7 +14,7 @@ import aiohttp
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from matchlens.azure_io.common import async_credential, settings, setup_telemetry
+from matchlens.azure_io.common import async_credential, async_openai, settings, setup_telemetry
 from matchlens.contracts import LANGUAGES, PERSONAS, cue_group, frames_group, state_group
 
 log = logging.getLogger("matchlens.api")
@@ -60,6 +61,10 @@ async def lifespan(app: FastAPI):
     app.state.wps = WebPubSubServiceClient(endpoint=s.webpubsub_endpoint, hub=s.webpubsub_hub, credential=app.state.cred)
     app.state.http = aiohttp.ClientSession()
     app.state.ask = None
+    from matchlens.reflex.ask import Reflex
+
+    app.state.reflex = Reflex(async_openai(s.foundry_project_endpoint, app.state.cred),
+                              os.environ.get("REFLEX_DEPLOYMENT", "gpt-4.1-mini"))
     yield
     await app.state.http.close()
     await app.state.cosmos.close()
@@ -199,7 +204,8 @@ async def get_asker(request: Request):
 
 @app.post("/api/ask")
 async def ask(request: Request):
-    """Ask the match: an Agent Framework agent answering through the match-data MCP server."""
+    """Ask the match. Reflex and the MCP agent start together; a Reflex answer cancels the agent,
+    and a Reflex pass costs nothing because the agent is already running."""
     if not asks.check(client_key(request)) or not global_asks.check("all"):
         raise HTTPException(429, "question limit reached, try again in a minute")
     body = await request.json()
@@ -208,9 +214,27 @@ async def ask(request: Request):
     lang = body.get("lang", "en") if body.get("lang") in LANGUAGES else "en"
     if not question or not match_id or len(question) > 300:
         raise HTTPException(400, "matchId and a question (max 300 characters) are required")
+
+    async def run_agent():
+        return await (await get_asker(request)).ask(match_id, question, lang)
+
+    async def read_state():
+        from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
+        try:
+            return await request.app.state.db["matchState"].read_item(match_id, partition_key=match_id)
+        except CosmosResourceNotFoundError:
+            return None
+
+    agent = asyncio.create_task(run_agent())
+    agent.add_done_callback(lambda t: t.cancelled() or t.exception())  # a cancelled or failed race leg is not an error
+    reflex = await request.app.state.reflex.answer(question, lang, read_state)
+    if reflex.text:
+        agent.cancel()
+        return {"answer": reflex.text, "tools": [], "model": "reflex" if reflex.tier == 0 else request.app.state.reflex.deployment,
+                "reflex": reflex.telemetry()}
     try:
-        asker = await get_asker(request)
-        return await asker.ask(match_id, question, lang)
+        return {**await agent, "reflex": reflex.telemetry()}
     except TimeoutError as exc:
         raise HTTPException(504, "the agent took too long") from exc
     except Exception as exc:

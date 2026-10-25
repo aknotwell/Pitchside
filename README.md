@@ -19,9 +19,12 @@ agent resumes exactly where it stopped.
    these numbers; a code verifier rejects anything else.
 4. Open **Producer** → **Start a match**. This launches a new Container Apps Job
    execution, which plays a live match.
-5. Open **Ask** and ask "Who has been the better team and why?" An Agent
-   Framework agent answers by calling the **MatchLens MCP server on Azure
-   Functions**, so every number comes from a tool.
+5. Open **Ask** and ask "Who is the fastest player?", then "Who scored the
+   goal?". **Reflex** answers the first in about a second. A batched logprob
+   classifier routes the question, and code writes the numbers. The second
+   goes to an Agent Framework agent on the **MatchLens MCP server on Azure
+   Functions**, which started at the same moment. Each answer shows which path
+   wrote it. See [`docs/REFLEX.md`](docs/REFLEX.md).
 6. Pick a **▶ Replay** in the match list. Finished matches are packaged by an
    **event-driven Container Apps Job** (Event Grid `FullTime` → Storage queue →
    KEDA). It re-simulates the match deterministically from its seed and
@@ -122,6 +125,7 @@ flowchart LR
 | Agents keep up | Agent-written, verified explanations: **p50 10.2 s**. The 10 s broadcast delay hides it. p95 58 s during scale-from-zero | same |
 | Survives a crash | Storyteller killed mid-workflow; ACA restarts it, the Service Bus session is reclaimed, and MAF resumes from the Cosmos checkpoint in **51 ms** without calling the model again | [`docs/PROGRESS.md`](docs/PROGRESS.md#checkpoint-3-deployed-to-azure-and-verified-end-to-end-2026-10-09) |
 | Grounded explanations | 4/4 sample moments passed the code verifier first time; injected bad numbers and names are rejected (tests) | `tests/test_storyteller.py` |
+| Fast, grounded Q&A | Reflex answers **88%** of answerable held-out questions (21/24), wrong on 1 of 22; Tier 0 p50 **1.1 s** vs 5–21 s on the agent path | [`docs/REFLEX.md`](docs/REFLEX.md) |
 | Realistic synthetic data | Agent-based engine calibrated to SkillCorner open data: passes/match **+3%**, pass completion **−4%**, shots **−2%**, distance/90 **+4%** (held-out seeds); goals, fouls and headers in normal ranges | [`docs/REALISM.md`](docs/REALISM.md) |
 
 ## Hero technologies
@@ -233,6 +237,7 @@ src/matchlens/
   sim/                deterministic event engine + 10 Hz tracking
   interpret/          incremental metrics, template cues, moment detectors
   story/              Agent Framework workflow, code verifier, localized templates
+  reflex/             Ask fast path: batched logprob probe, code-written answers
   services/           simulator · interpreter · storyteller · api entrypoints
 functions/cue_publisher/   Cosmos change feed → Web PubSub
 web/                  React overlay player, Why? drawer, producer console

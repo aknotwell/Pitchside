@@ -114,3 +114,16 @@ async def create_once(container, doc: dict) -> bool:
         return True
     except ResourceExistsError:
         return False
+
+
+def async_openai(project_endpoint: str, credential):
+    """Raw Azure OpenAI client on the Foundry account (Reflex needs token logprobs)."""
+    from urllib.parse import urlsplit
+
+    from azure.identity.aio import get_bearer_token_provider
+    from openai import AsyncAzureOpenAI
+
+    u = urlsplit(project_endpoint)
+    return AsyncAzureOpenAI(azure_endpoint=f"{u.scheme}://{u.netloc}/", api_version="2025-04-01-preview",
+                            azure_ad_token_provider=get_bearer_token_provider(
+                                credential, "https://cognitiveservices.azure.com/.default"))
