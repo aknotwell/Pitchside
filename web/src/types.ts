@@ -57,3 +57,16 @@ export interface MatchSummary {
   id: string; displayClock: string; ended: boolean; home: string; away: string;
   homeGoals: number; awayGoals: number; updated: number;
 }
+
+export interface Reflex {
+  outcome: "answer" | "decline" | "pass";
+  capability: string | null;
+  tier: 0 | 1 | null;
+  confidence: number;
+  reason: string;
+  probeMs?: number;
+  ms?: number;
+  problems?: string[] | null;
+}
+
+export interface AskAnswer { answer: string; tools: string[]; model: string; reflex?: Reflex }

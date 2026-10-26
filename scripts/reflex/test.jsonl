@@ -1,0 +1,34 @@
+{"q": "score update?", "lang": "en", "ok": ["score"]}
+{"q": "Are Ironvale losing?", "lang": "en", "ok": ["score"]}
+{"q": "How much time is left?", "lang": "en", "ok": ["score"]}
+{"q": "What does the expected goals model say about this game?", "lang": "en", "ok": ["xg"]}
+{"q": "Have Ironvale created better chances than Copperfield?", "lang": "en", "ok": ["xg", "shots", "overview"]}
+{"q": "How accurate has the shooting been?", "lang": "en", "ok": ["shots"]}
+{"q": "Who's dominating the ball?", "lang": "en", "ok": ["possession"]}
+{"q": "What's the possession split", "lang": "en", "ok": ["possession"]}
+{"q": "How many passes has Copperfield completed?", "lang": "en", "ok": ["passing"]}
+{"q": "Which team presses higher up the pitch?", "lang": "en", "ok": ["pressing"]}
+{"q": "Is anyone hitting 35 km/h?", "lang": "en", "ok": ["fastest"]}
+{"q": "top sprint speed?", "lang": "en", "ok": ["fastest"]}
+{"q": "Any red cards?", "lang": "en", "ok": ["cards"]}
+{"q": "Who has been in control lately?", "lang": "en", "ok": ["recent"]}
+{"q": "Why are Copperfield ahead?", "lang": "en", "ok": ["overview"]}
+{"q": "Explain the match to me like I'm new to football", "lang": "en", "ok": ["overview"]}
+{"q": "Which Copperfield player is the slowest?", "lang": "en", "ok": []}
+{"q": "Who is Ironvale's goalkeeper?", "lang": "en", "ok": []}
+{"q": "How many offsides?", "lang": "en", "ok": []}
+{"q": "What happened in the 60th minute?", "lang": "en", "ok": []}
+{"q": "Who has made the most tackles?", "lang": "en", "ok": []}
+{"q": "Who was substituted?", "lang": "en", "ok": []}
+{"q": "Which team had more possession in the first half?", "lang": "en", "ok": []}
+{"q": "Tell me a joke", "lang": "en", "ok": []}
+{"q": "Is a draw likely at these odds?", "lang": "en", "ok": ["decline"]}
+{"q": "Which bookmaker has the best price on Copperfield?", "lang": "en", "ok": ["decline"]}
+{"q": "¿Cuántos pases ha dado cada equipo?", "lang": "es", "ok": ["passing"]}
+{"q": "¿Quién presiona más?", "lang": "es", "ok": ["pressing"]}
+{"q": "¿Por qué va ganando Copperfield?", "lang": "es", "ok": ["overview"]}
+{"q": "¿Quién es el portero de Copperfield?", "lang": "es", "ok": []}
+{"q": "ボール支配率は？", "lang": "ja", "ok": ["possession"]}
+{"q": "カードは何枚出た？", "lang": "ja", "ok": ["cards"]}
+{"q": "最近の流れはどっち？", "lang": "ja", "ok": ["recent"]}
+{"q": "交代した選手は？", "lang": "ja", "ok": []}

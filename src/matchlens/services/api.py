@@ -14,7 +14,7 @@ import aiohttp
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from matchlens.azure_io.common import async_credential, settings, setup_telemetry
+from matchlens.azure_io.common import async_credential, async_openai, settings, setup_telemetry
 from matchlens.contracts import LANGUAGES, PERSONAS, cue_group, frames_group, state_group
 
 log = logging.getLogger("matchlens.api")
@@ -134,7 +134,12 @@ async def lifespan(app: FastAPI):
     app.state.blobs = BlobServiceClient(s.storage_blob_endpoint, credential=app.state.cred)
     app.state.http = aiohttp.ClientSession()
     app.state.ask = None
+    from matchlens.reflex.ask import Reflex
+
+    app.state.reflex = Reflex(async_openai(s.foundry_project_endpoint, app.state.cred),
+                              os.environ.get("REFLEX_DEPLOYMENT", "gpt-4.1-mini"))
     yield
+    await app.state.reflex.client.close()
     await app.state.http.close()
     await app.state.blobs.close()
     await app.state.cosmos.close()
@@ -278,9 +283,13 @@ async def get_asker(request: Request):
     return request.app.state.ask
 
 
+AGENT_HEAD_START_S = 2.5  # covers most probes and Tier 1 calls; a slower Reflex races the agent
+
+
 @app.post("/api/ask")
 async def ask(request: Request):
-    """Ask the match: an Agent Framework agent answering through the match-data MCP server."""
+    """Ask the match. Reflex answers first when it can. The MCP agent starts when Reflex passes, or
+    after a short head start, and is cancelled when Reflex answers; the first useful answer wins."""
     if not asks.check(client_key(request)) or not await global_asks.take(request.app.state.db["runs"]):
         raise HTTPException(429, "question limit reached, try again in a minute")
     body = await request.json()
@@ -289,14 +298,49 @@ async def ask(request: Request):
     lang = body.get("lang", "en") if body.get("lang") in LANGUAGES else "en"
     if not question or not match_id or len(question) > 300:
         raise HTTPException(400, "matchId and a question (max 300 characters) are required")
+
+    async def run_agent():
+        return await (await get_asker(request)).ask(match_id, question, lang)
+
+    async def read_state():
+        from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
+        try:
+            return await request.app.state.db["matchState"].read_item(match_id, partition_key=match_id)
+        except CosmosResourceNotFoundError:
+            return None
+
+    reflex = request.app.state.reflex
+    reflex_task = asyncio.create_task(reflex.answer(question, lang, read_state))
+    agent_task: asyncio.Task | None = None
     try:
-        asker = await get_asker(request)
-        return await asker.ask(match_id, question, lang)
-    except TimeoutError as exc:
-        raise HTTPException(504, "the agent took too long") from exc
-    except Exception as exc:
-        log.warning("ask failed: %s", exc)
-        raise HTTPException(502, "the agent is unavailable right now") from exc
+        await asyncio.wait({reflex_task}, timeout=AGENT_HEAD_START_S)
+        while True:
+            if reflex_task.done():
+                r = reflex_task.result()
+                if r.text:
+                    return {"answer": r.text, "tools": [], "model": "reflex" if r.tier == 0 else reflex.deployment,
+                            "reflex": r.telemetry()}
+            if agent_task is None:
+                agent_task = asyncio.create_task(run_agent())
+            pending = {agent_task} | ({reflex_task} if not reflex_task.done() else set())
+            done, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            if agent_task in done and (agent_task.exception() is None or reflex_task.done()):
+                break
+            if agent_task in done:  # the agent failed; a Reflex answer still on its way can rescue the turn
+                await asyncio.wait({reflex_task})
+        telemetry = reflex_task.result().telemetry() if reflex_task.done() else {"outcome": "pass", "reason": "agent_first"}
+        try:
+            return {**agent_task.result(), "reflex": telemetry}
+        except TimeoutError as exc:
+            raise HTTPException(504, "the agent took too long") from exc
+        except Exception as exc:
+            log.warning("ask failed: %s", exc)
+            raise HTTPException(502, "the agent is unavailable right now") from exc
+    finally:
+        for t in (reflex_task, agent_task):
+            if t is not None and not t.done():
+                t.cancel()
 
 
 AUDIO_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}/[A-Za-z0-9_.-]{1,120}\.mp3$")
