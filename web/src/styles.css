@@ -59,6 +59,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; pa
 .badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; letter-spacing: .02em; }
 .badge.ai { background: var(--ai); } .badge.data { background: #2b3a4b; } .badge.fb { background: #6b4e16; }
 .why { margin-top: 6px; font-size: 12px; padding: 2px 8px; }
+.third-actions { display: flex; gap: 6px; align-items: center; } .dismiss { margin-top: 6px; font-size: 14px; line-height: 1; padding: 2px 8px; }
 @keyframes slide { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .third, .panel { animation: none; } }
 .side { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }

@@ -20,6 +20,12 @@ resource replayQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@202
   name: 'replay-requests'
 }
 
+// Storage queues have no dead-letter queue: the replay job moves requests it can't package here.
+resource replayPoisonQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' = {
+  parent: queues
+  name: 'replay-requests-poison'
+}
+
 resource topic 'Microsoft.EventGrid/topics@2025-02-15' = {
   name: 'evgt-lifecycle-${resourceToken}'
   location: location

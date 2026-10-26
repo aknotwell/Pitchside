@@ -86,6 +86,27 @@ resource blobContainers 'Microsoft.Storage/storageAccounts/blobServices/containe
   name: n
 }]
 
+// Interpreter snapshots are only needed while a match is live; finished ones would pile up forever.
+resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
+  parent: storage
+  name: 'default'
+  properties: {
+    policy: {
+      rules: [
+        {
+          name: 'expire-interpreter-snapshots'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: { blobTypes: [ 'blockBlob' ], prefixMatch: [ 'ehcheckpoints/snapshots/' ] }
+            actions: { baseBlob: { delete: { daysAfterModificationGreaterThan: 2 } } }
+          }
+        }
+      ]
+    }
+  }
+}
+
 resource storageRoleAssignments 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for r in storageRoles: {
   scope: storage
   name: guid(storage.id, r.principalId, r.roleId)

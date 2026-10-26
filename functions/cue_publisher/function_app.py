@@ -14,6 +14,8 @@ from azure.messaging.webpubsubservice import WebPubSubServiceClient
 
 app = func.FunctionApp()
 _client: WebPubSubServiceClient | None = None
+SEND_ATTEMPTS = 3
+SEND_BACKOFF_S = 0.5
 
 
 def client() -> WebPubSubServiceClient:
@@ -25,25 +27,58 @@ def client() -> WebPubSubServiceClient:
     return _client
 
 
+def is_transient(exc: Exception) -> bool:
+    """Most Web PubSub failures are transient (429, 5xx, network). Any other 4xx won't get better."""
+    from azure.core.exceptions import HttpResponseError
+
+    code = exc.status_code if isinstance(exc, HttpResponseError) else None
+    return not (code and 400 <= code < 500 and code != 429)
+
+
+def send_with_retry(send, group: str, payload: dict) -> None:
+    for attempt in range(SEND_ATTEMPTS):
+        try:
+            send(group, payload, content_type="application/json")
+            return
+        except Exception as exc:
+            if attempt == SEND_ATTEMPTS - 1 or not is_transient(exc):
+                raise
+        time.sleep(SEND_BACKOFF_S * 2 ** attempt)
+
+
 @app.function_name("cue_publisher")
 @app.cosmos_db_trigger(arg_name="docs", connection="CosmosDb", database_name="matchlens", container_name="cues",
                        lease_container_name="leases", create_lease_container_if_not_exists=False,
                        feed_poll_delay=250, max_items_per_invocation=100)
+@app.retry(strategy="fixed_delay", max_retry_count="3", delay_interval="00:00:05")
 def cue_publisher(docs: func.DocumentList) -> None:
-    sent = 0
+    publish(docs, client().send_to_group)
+
+
+def publish(docs, send) -> int:
+    """Send every cue. A cue that still fails after retries with a transient error fails the whole
+    invocation, so the Functions runtime retries the batch before the change-feed lease moves on
+    (the browser dedupes resent cues by id). A cue Web PubSub rejects outright is logged and skipped:
+    one bad cue must not block the feed."""
+    sent, transient = 0, []
     for d in docs:
         cue = {k: v for k, v in dict(d).items() if not k.startswith("_")}
         group = f"m.{cue['matchId']}.cues.{cue.get('persona', 'all')}.{cue.get('lang', 'all')}"
         try:
-            client().send_to_group(group, {"type": "cue", "cue": cue}, content_type="application/json")
+            send_with_retry(send, group, {"type": "cue", "cue": cue})
             sent += 1
             enq = (cue.get("data") or {}).get("enqueuedAtMs")
             if enq:  # server-side SLO signal: event enqueued -> cue pushed to Web PubSub
                 logging.info("cue_published match=%s source=%s template=%s latency_ms=%d",
                              cue["matchId"], cue.get("source"), cue.get("template"), time.time() * 1000 - enq)
-        except Exception as exc:  # one bad cue must not block the feed
+        except Exception as exc:
             logging.warning("publish failed for %s: %s", cue.get("id"), exc)
+            if is_transient(exc):
+                transient.append(exc)
     logging.info("published %d/%d cues", sent, len(docs))
+    if transient:
+        raise RuntimeError(f"{len(transient)} cue(s) not delivered; retrying the batch") from transient[0]
+    return sent
 
 
 # ---------------------------------------------------------------------------------------------
