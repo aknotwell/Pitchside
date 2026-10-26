@@ -161,40 +161,35 @@ function onMessage(f: LiveFeed, data: unknown) {
   } catch { /* ignore non-JSON */ }
 }
 
-/** One viewer's live connection: their cue history, then a socket kept open across drops. Returns its
- *  stop. Nothing from a stopped connection (a late history fetch, a closing socket's last messages)
- *  reaches the feed, which by then belongs to the viewer or language picked next. */
+/** One viewer's live connection: a socket kept open across drops, with their cue history merged on
+ *  each open. Returns its stop. Nothing from a stopped connection (a late history fetch, a closing
+ *  socket's last messages) reaches the feed, which by then belongs to the viewer or language picked next. */
 export function connect(f: LiveFeed, matchId: string, persona: Persona, lang: Lang): () => void {
   let stopped = false;
-  let stopSocket: (() => void) | null = null;
   let opens = 0;
+  let hasHistory = false;
   f.byId = new Map();
   f.late = [];
-  const cues = () => api.cues(matchId, persona, lang, CUE_HISTORY);
-  (async () => {
-    const hist = await cues().catch(() => ({ cues: [] as Cue[] }));
-    if (stopped) return;
-    for (const c of hist.cues) f.byId.set(c.id, c);
-    stopSocket = keepConnected({
-      negotiate: () => api.negotiate(matchId, persona, lang),
-      cues,
-      open: (url) => new WebSocket(url),
-    }, {
-      onMessage: (data) => { if (!stopped) onMessage(f, data); },
-      // Cues that aired while the socket was down or opening: late, like one the socket brings after its moment
-      onCues: (missed) => {
-        if (stopped) return;
-        for (const c of missed) if (!f.byId.has(c.id)) { f.byId.set(c.id, c); f.late.push(c); }
-      },
-      onConnected: (up) => {
-        if (stopped) return;
-        f.connected = up;
-        // A reopen, or a first open replacing another viewer's or language's socket, follows a gap only the recording has
-        if (up && (opens++ > 0 || f.frames.length)) f.recording.wanted++;
-      },
-    });
-  })();
-  return () => { stopped = true; stopSocket?.(); f.connected = false; };
+  const stopSocket = keepConnected({
+    negotiate: () => api.negotiate(matchId, persona, lang),
+    cues: () => api.cues(matchId, persona, lang, CUE_HISTORY),
+    open: (url) => new WebSocket(url),
+  }, {
+    onMessage: (data) => { if (!stopped) onMessage(f, data); },
+    // The first merge is the viewer's history. Later ones aired while the socket was down: late, like one the socket brings after its moment
+    onCues: (cues) => {
+      if (stopped) return;
+      for (const c of cues) if (!f.byId.has(c.id)) { f.byId.set(c.id, c); if (hasHistory) f.late.push(c); }
+      hasHistory = true;
+    },
+    onConnected: (up) => {
+      if (stopped) return;
+      f.connected = up;
+      // A reopen, or a first open replacing another viewer's or language's socket, follows a gap only the recording has
+      if (up && (opens++ > 0 || f.frames.length)) f.recording.wanted++;
+    },
+  });
+  return () => { stopped = true; stopSocket(); f.connected = false; };
 }
 
 export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lang): Live {

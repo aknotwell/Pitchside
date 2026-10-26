@@ -217,19 +217,36 @@ describe("connect", () => {
     vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
     const f = liveFeed();
     const stopCasual = connect(f, "m1", "casual", "en");
+    await settle();
+    FakeSocket.all[0].onopen?.();
     stopCasual();
     connect(f, "m1", "analyst", "en");
+    await settle();
+    FakeSocket.all[1].onopen?.();
     await settle();
     arrive({ cues: [cue("casual-1")] });
     await settle();
     expect([...f.byId.keys()]).toEqual(["analyst-1"]);
-    expect(FakeSocket.all).toHaveLength(1);
+  });
+
+  it("joining fetches the cue history once, and none of it is late", async () => {
+    vi.stubGlobal("WebSocket", FakeSocket);
+    vi.mocked(api.cues).mockReset().mockResolvedValue({ cues: [cue("a"), cue("b")] });
+    vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
+    const f = liveFeed();
+    connect(f, "m1", "casual", "en");
+    await settle();
+    FakeSocket.all[0].onopen?.();
+    await settle();
+    expect(api.cues).toHaveBeenCalledTimes(1);
+    expect([...f.byId.keys()]).toEqual(["a", "b"]);
+    expect(f.late).toEqual([]);
   });
 
   it("after a drop it reconnects, merges the cues it missed as late ones, and asks for the recording again", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("WebSocket", FakeSocket);
-    vi.mocked(api.cues).mockResolvedValueOnce({ cues: [cue("before")] }).mockResolvedValueOnce({ cues: [cue("before")] })
+    vi.mocked(api.cues).mockReset().mockResolvedValueOnce({ cues: [cue("before")] })
       .mockResolvedValue({ cues: [cue("before"), cue("missed")] });
     vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -250,6 +267,7 @@ describe("connect", () => {
     expect(f.connected).toBe(true);
     expect([...f.byId.keys()]).toEqual(["before", "missed"]);
     expect(f.late.map((c) => c.id)).toEqual(["missed"]);
+    expect(api.cues).toHaveBeenCalledTimes(2);
     expect(f.recording.wanted).toBe(2);
     vi.useRealTimers();
   });
