@@ -38,6 +38,7 @@ EMIT_ATTEMPTS = 3
 EMIT_BACKOFF_S = 0.5
 REBUILD_CONSUMER_GROUP = "interpreter-rebuild"
 REBUILD_TIMEOUT_S = 120.0
+FINISHED_STATE_TTL_S = 30 * 86400
 
 
 class InterpreterService:
@@ -274,6 +275,8 @@ class InterpreterService:
             if out.frames is not None:
                 latest_frames.setdefault(it.match_id, []).extend(out.frames["frames"])
         for mid, st in latest_state.items():
+            if st.get("ended"):
+                st = {**st, "ttl": FINISHED_STATE_TTL_S}  # live ones never expire; finished ones go after 30 days
             tasks.append(lambda st=st: self.state.upsert_item(st))
             self.pending_state[mid] = {k: v for k, v in st.items() if k != "meta"}
         for mid, frames in latest_frames.items():
