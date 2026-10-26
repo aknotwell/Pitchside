@@ -8,7 +8,7 @@ import logging
 import os
 import re
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from contextlib import asynccontextmanager
 
 import aiohttp
@@ -280,9 +280,41 @@ async def replay(match_id: str, request: Request):
                     headers={"Content-Encoding": "gzip", "Cache-Control": "public, max-age=3600"})
 
 
+class RecordingCache:
+    """Each match's recording, gzipped, so a burst of joiners costs one download and one compression.
+
+    The blob only grows, so a copy at least as long as the blob was when a request arrived holds
+    everything that request could have seen. Copies older than a few seconds are rebuilt anyway."""
+
+    class Entry:
+        def __init__(self):
+            self.lock = asyncio.Lock()
+            self.size, self.at, self.body = -1, 0.0, b""
+
+    def __init__(self, ttl_s: float = 5.0, max_matches: int = 16):
+        self.ttl_s, self.max_matches = ttl_s, max_matches
+        self.entries: OrderedDict[str, RecordingCache.Entry] = OrderedDict()
+
+    async def get(self, match_id: str, size: int, download) -> bytes:
+        e = self.entries.setdefault(match_id, RecordingCache.Entry())
+        self.entries.move_to_end(match_id)
+        while len(self.entries) > self.max_matches:
+            self.entries.popitem(last=False)
+        async with e.lock:  # concurrent requests wait for the first one's copy instead of making their own
+            if e.size < size or time.monotonic() - e.at > self.ttl_s:
+                data = await download()
+                e.body = await asyncio.to_thread(gzip.compress, data, 1)  # level 6 is ~30% smaller and ~4x slower
+                e.size, e.at = len(data), time.monotonic()
+            return e.body
+
+
+recording_cache = RecordingCache()
+
+
 @app.get("/api/matches/{match_id}/recording")
 async def recording(match_id: str, request: Request):
     """Every live tick broadcast so far (one JSON line each), so a late joiner can scrub back to kick-off."""
+    from azure.core.exceptions import ResourceNotFoundError
     from azure.storage.blob.aio import BlobClient
     from fastapi.responses import Response
 
@@ -290,12 +322,19 @@ async def recording(match_id: str, request: Request):
         raise HTTPException(400, "bad match id")
     blob = BlobClient(settings().storage_blob_endpoint, RECORDINGS_CONTAINER, recording_blob(match_id),
                       credential=request.app.state.cred)
+
+    async def download() -> bytes:
+        return await (await blob.download_blob()).readall()
+
     try:
         async with blob:
-            data = await (await blob.download_blob()).readall()
-    except Exception as exc:
+            size = (await blob.get_blob_properties()).size
+            body = await recording_cache.get(match_id, size, download)
+    except ResourceNotFoundError as exc:  # usual at kick-off: nothing has been appended yet
         raise HTTPException(404, "recording not found") from exc
-    body = await asyncio.to_thread(gzip.compress, data, 6)
+    except Exception as exc:
+        log.warning("recording %s unavailable: %s", match_id, exc)
+        raise HTTPException(502, "recording unavailable") from exc
     return Response(body, media_type="application/x-ndjson", headers={"Content-Encoding": "gzip", "Cache-Control": "no-store"})
 
 
