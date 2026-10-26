@@ -32,8 +32,9 @@ describe("recordedPace", () => {
     expect(recordedPace([...first, ...replayed])).toEqual({ pace: 2, newest: 87 });
   });
 
-  it("needs a few ticks to go on", () => {
-    expect(recordedPace(ticks(2, 3, 1))).toBeNull();
+  it("needs ten intervals between ticks to go on", () => {
+    expect(recordedPace(ticks(10, 3, 1))).toBeNull();
+    expect(recordedPace(ticks(11, 3, 1))).toEqual({ pace: 3, newest: 30 });
   });
 });
 
@@ -126,6 +127,24 @@ describe("keepLoadingRecording", () => {
     expect(asked[1]).toBe(`/api/matches/m1/recording?from=${bytes(named(3))}`);
     expect(f.recording.size).toBe(bytes(recorded));
     expect(f.frames.map((x) => x.t_s)).toEqual(named(5).flatMap((t) => t.frames!.map((x) => x.t_s)));
+  });
+
+  it("keeps the pace it read when a later load is too short to measure one", async () => {
+    vi.useFakeTimers();
+    let recorded = ticks(30, 3, 1.5);
+    serve(() => recorded);
+    const f = liveFeed();
+    f.connected = true;
+    void keepLoadingRecording(f, "m1", new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(f.paceHint).toBe(2);
+
+    const later = ticks(33, 3, 1.5).slice(30).map((t, i) => ({ ...t, wallMs: t.wallMs! + i * 5_000 }));  // a slow few
+    recorded = [...recorded, ...later];
+    f.recording.wanted++;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(f.frames.at(-1)?.t_s).toBe(96);
+    expect(f.paceHint).toBe(2);
   });
 
   it("reads the whole recording again when its offset is past the end", async () => {

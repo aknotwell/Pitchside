@@ -80,19 +80,20 @@ function onFrames(f: LiveFeed, incoming: Frame[]) {
   f.frames = mergeByTime(f.frames, incoming, byT);
 }
 
-/** The simulator's pace over a recording's last ten ticks, from their server clocks (older recordings
- *  lack them, and their ticks are taken as a second apart), and the newest match time recorded. A tick
- *  counts only if it moves past every match time recorded before it: after an interpreter restart the
- *  replayed ticks split the frames at other times, and a tick whose append lost a race to a later
- *  one's is one fewer to measure, not a step back. */
+/** The simulator's pace over a recording's last ten intervals between ticks, from their server clocks
+ *  (older recordings lack them, and their ticks are taken as a second apart), and the newest match time
+ *  recorded. Fewer intervals, such as a few seconds' tail, swing with when each tick happened to be
+ *  sent, so they give null. A tick counts only if it moves past every match time recorded before it:
+ *  after an interpreter restart the replayed ticks split the frames at other times, and a tick whose
+ *  append lost a race to a later one's is one fewer to measure, not a step back. */
 export function recordedPace(ticks: Tick[]): { pace: number; newest: number } | null {
   const ends: { t: number; wallMs?: number }[] = [];
   for (const { frames, wallMs } of ticks) {
     const t = frames?.length ? frames[frames.length - 1].t_s : -Infinity;
     if (t > (ends.at(-1)?.t ?? -Infinity)) ends.push({ t, wallMs });
   }
-  const k = Math.min(10, ends.length - 1);
-  if (k < 2) return null;
+  const k = 10;
+  if (ends.length <= k) return null;
   const a = ends[ends.length - 1 - k], b = ends[ends.length - 1];
   const wallS = a.wallMs !== undefined && b.wallMs !== undefined && b.wallMs > a.wallMs ? (b.wallMs - a.wallMs) / 1000 : k;
   return { pace: pace(b.t - a.t, wallS), newest: b.t };
