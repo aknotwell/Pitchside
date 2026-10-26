@@ -39,4 +39,12 @@ describe("sampleFrames", () => {
     const gone = [frame(0, 5), frame(1, 0, [0, 0, 0], [])];
     expect(sampleFrames(gone, 0.5)!.players).toEqual([{ id: "h1", x: 5, y: 0 }]);
   });
+
+  it("says which restart the ball is dead for until the next sample shows play resumed", () => {
+    const corner = { kind: "corner", team: "a" } as const;
+    const fs = [{ ...frame(0, 0), restart: corner }, { ...frame(1, 0), restart: corner }, { ...frame(2, 0), restart: null }];
+    expect(sampleFrames(fs, 0.5)!.restart).toEqual(corner);
+    expect(sampleFrames(fs, 1.5)!.restart).toEqual(corner);
+    expect(sampleFrames(fs, 2.5)!.restart).toBeNull();
+  });
 });

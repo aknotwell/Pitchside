@@ -43,13 +43,19 @@ class StubAgent:
         return {"answer": "from the agent", "tools": ["get_match_state"], "model": "gpt-4.1-mini"}
 
 
+class OpenBudget:
+    async def take(self, container):
+        return True
+
+
 @pytest.fixture(autouse=True)
 def short_head_start(monkeypatch):
     monkeypatch.setattr(api, "AGENT_HEAD_START_S", 0.1)
+    monkeypatch.setattr(api, "global_asks", OpenBudget())
 
 
 async def ask(reflex, agent):
-    api.app.state.reflex, api.app.state.ask = reflex, agent
+    api.app.state.reflex, api.app.state.ask, api.app.state.db = reflex, agent, {"runs": None}
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api.app), base_url="http://t") as c:
         return await c.post("/api/ask", json={"matchId": "m1", "question": "score?"},
                             headers={"x-forwarded-for": f"10.9.0.{next(ips)}"})

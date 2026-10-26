@@ -6,6 +6,7 @@ import { Overlay } from "./components/Overlay";
 import { Pitch } from "./components/Pitch";
 import { Ask } from "./components/Ask";
 import { Producer } from "./components/Producer";
+import { RestartLabel } from "./components/RestartLabel";
 import { Scoreboard } from "./components/Scoreboard";
 import { Squads } from "./components/Squads";
 import { Stats } from "./components/Stats";
@@ -14,6 +15,7 @@ import { BROADCAST_DELAY_S, useLiveMatch } from "./live";
 import { useReplay } from "./replay";
 import { LAB_META, labSample } from "./lab";
 import type { Cue, Lang, MatchState, MatchSummary, Persona } from "./types";
+import { PERSONAS } from "./types";
 import type { CamMode } from "./components/Pitch3D";
 
 const Pitch3D = lazy(() => import("./components/Pitch3D"));
@@ -52,7 +54,8 @@ function Main({ params }: { params: URLSearchParams }) {
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [matchesLoaded, setMatchesLoaded] = useState(false);
   const [matchId, setMatchId] = useState<string | null>(params.get("match"));
-  const [persona, setPersona] = useState<Persona>((params.get("persona") as Persona) || "casual");
+  const [persona, setPersona] = useState<Persona>(
+    PERSONAS.find((p) => p.id === params.get("persona"))?.id ?? "casual");
   const [lang, setLang] = useState<Lang>((params.get("lang") as Lang) || "en");
   const [why, setWhy] = useState<Cue | null>(null);
   const [tab, setTab] = useState<"stats" | "squads" | "feed" | "ask" | "producer">("stats");
@@ -132,8 +135,8 @@ function Main({ params }: { params: URLSearchParams }) {
           </>
         )}
         <div className="seg" role="group" aria-label="Viewer">
-          {(["casual", "analyst"] as Persona[]).map((p) => (
-            <button key={p} className={persona === p ? "on" : ""} onClick={() => setPersona(p)}>{p === "casual" ? "Fan" : "Analyst"}</button>
+          {PERSONAS.map((p) => (
+            <button key={p.id} className={persona === p.id ? "on" : ""} title={p.hint} onClick={() => setPersona(p.id)}>{p.label}</button>
           ))}
         </div>
         <div className="seg" role="group" aria-label="Language">
@@ -161,6 +164,7 @@ function Main({ params }: { params: URLSearchParams }) {
               </select>
             )}
           </div>
+          <RestartLabel restart={live.frame?.restart} meta={live.state?.meta} />
           <Overlay cues={live.cues} onWhy={setWhy} />
         </section>
         <aside className="side">

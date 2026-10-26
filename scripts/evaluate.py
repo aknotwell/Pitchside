@@ -111,7 +111,8 @@ def main() -> None:
                          "ms": info["ms"], "groundedness": g.get("groundedness"), "coherence": q.get("coherence"),
                          "groundedness_reason": g.get("groundedness_reason"), "text": response})
 
-    agent_rate = sum(1 for _, _, i in results if i["source"] == "agent") / len(results)
+    all_cues = [c for _, cues, _ in results for c in cues]
+    agent_rate = sum(1 for c in all_cues if c.source == "agent") / max(1, len(all_cues))  # per persona variant
     lat = sorted(i["ms"] for _, _, i in results)
     p95 = lat[min(len(lat) - 1, int(round(0.95 * (len(lat) - 1))))]
     summary = {
@@ -133,7 +134,7 @@ def main() -> None:
     md = [f"# Explanation quality evaluation {stamp}", "",
           f"{summary['moments']} golden moments from seeds {a.seeds}; storyteller = Agent Framework workflow on "
           f"`gpt-5-mini` (fallback `gpt-4.1-mini`); judge = Foundry `{a.judge}` via the Azure AI Evaluation SDK "
-          "(Entra auth). English variants scored for both personas.", "",
+          "(Entra auth). English variants scored for every persona.", "",
           "| Metric | Value | Threshold | Pass |", "|---|---|---|---|",
           f"| Groundedness (1–5, mean) | {summary['groundedness_mean']} | ≥ {THRESHOLDS['groundedness_mean']} | {'✅' if checks['groundedness_mean'] else '❌'} |",
           f"| Coherence (1–5, mean) | {summary['coherence_mean']} | ≥ {THRESHOLDS['coherence_mean']} | {'✅' if checks['coherence_mean'] else '❌'} |",

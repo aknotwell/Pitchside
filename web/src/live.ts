@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { sampleFrames } from "./sample";
+import { keepConnected } from "./socket";
 import type { Cue, Frame, Lang, MatchState, Persona } from "./types";
 
 /** Broadcast delay in wall-clock seconds: the player shows the match this far behind live, so
  * explanations written by agents (a few seconds of latency) land exactly on the play they explain. */
 export const BROADCAST_DELAY_S = 10;
+/** State docs arrive about once a second; keep the last ten minutes of match clock, like frames. */
+const MAX_STATES = 1200;
 
 interface Clock { matchT: number; wall: number; speed: number }
 
@@ -34,8 +37,8 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
 
   useEffect(() => {
     if (!matchId) return;
-    let ws: WebSocket | null = null;
     let stopped = false;
+    let stop: (() => void) | null = null;
     frames.current = [];
     states.current = [];
     allCues.current = new Map();
@@ -59,34 +62,53 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
       if (frames.current.length > 4000) frames.current = frames.current.filter((f) => f.t_s >= cutoff);
     };
 
+    const onState = (st: MatchState) => {
+      const sts = states.current;
+      sts.push(st);
+      if (sts.length > MAX_STATES) {
+        const cutoff = st.clockS - 600;
+        const kept = sts.filter((s) => s.clockS >= cutoff);
+        if (!kept[0].meta && sts[0].meta) kept[0] = { ...kept[0], meta: sts[0].meta };  // the renderer reads meta from the first
+        states.current = kept;
+      }
+    };
+
+    const onMessage = (data: unknown) => {
+      try {
+        let msg = JSON.parse(typeof data === "string" ? data : "");
+        if (typeof msg === "string") msg = JSON.parse(msg); // tolerate double-encoded payloads
+        if (msg.type === "tick") {
+          onFrames((msg.frames ?? []) as Frame[]);
+          if (msg.state) onState(msg.state as MatchState);
+        } else if (msg.type === "frames") onFrames(msg.frames as Frame[]);
+        else if (msg.type === "state") onState(msg.state as MatchState);
+        else if (msg.type === "cue") allCues.current.set(msg.cue.id, msg.cue as Cue);
+      } catch { /* ignore non-JSON */ }
+    };
+
     (async () => {
       try {
         const [st, hist] = await Promise.all([api.match(matchId).catch(() => null), api.cues(matchId, persona, lang).catch(() => ({ cues: [] }))]);
-        if (st) states.current.push(st);
+        if (st) onState(st);
         for (const c of hist.cues) {
           allCues.current.set(c.id, c);
           shownAt.current.set(c.id, -1); // history: never pops up again
         }
-        const { url } = await api.negotiate(matchId, persona, lang);
-        if (stopped) return;
-        ws = new WebSocket(url);
-        ws.onopen = () => setLive((l) => ({ ...l, connected: true }));
-        ws.onclose = () => setLive((l) => ({ ...l, connected: false }));
-        ws.onmessage = (ev) => {
-          try {
-            let msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
-            if (typeof msg === "string") msg = JSON.parse(msg); // tolerate double-encoded payloads
-            if (msg.type === "tick") {
-              onFrames((msg.frames ?? []) as Frame[]);
-              if (msg.state) states.current.push(msg.state as MatchState);
-            } else if (msg.type === "frames") onFrames(msg.frames as Frame[]);
-            else if (msg.type === "state") states.current.push(msg.state as MatchState);
-            else if (msg.type === "cue") allCues.current.set(msg.cue.id, msg.cue as Cue);
-          } catch { /* ignore non-JSON */ }
-        };
       } catch (e) {
-        console.warn("live connect failed", e);
+        console.warn("cue history failed", e);
       }
+      if (stopped) return;
+      // Reconnects after Wi-Fi blips, sleep or a Web PubSub restart. Cues that aired while the socket
+      // was down (or opening) come back through the REST merge and show as usual: the Map dedupes.
+      stop = keepConnected({
+        negotiate: () => api.negotiate(matchId, persona, lang),
+        cues: () => api.cues(matchId, persona, lang),
+        open: (url) => new WebSocket(url),
+      }, {
+        onMessage,
+        onCues: (cues) => { for (const c of cues) if (!allCues.current.has(c.id)) allCues.current.set(c.id, c); },
+        onConnected: (connected) => setLive((l) => ({ ...l, connected })),
+      });
     })();
 
     const playheadAt = (now: number) => {
@@ -148,7 +170,7 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
       stopped = true;
       cancelAnimationFrame(raf);
       sampler.current = () => null;
-      ws?.close();
+      stop?.();
     };
   }, [matchId, persona, lang]);
 

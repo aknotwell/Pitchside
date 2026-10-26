@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { API } from "../api";
 import type { Cue } from "../types";
 
@@ -7,9 +8,16 @@ function badge(c: Cue) {
   return <span className="badge data" title="Computed directly from the event stream">Data</span>;
 }
 
+/** Lower-thirds the viewer can close. Dismissal is per cue id, so the next cue still appears, and a
+ *  dismissed one stays under Moments with its Why? intact. */
+export function lowerThirds(cues: Cue[], dismissed: ReadonlySet<string>): Cue[] {
+  return cues.filter((c) => !c.template.startsWith("panel.") && c.template !== "player_tag.speed" && !dismissed.has(c.id)).slice(0, 2);
+}
+
 export function Overlay({ cues, onWhy }: { cues: Cue[]; onWhy: (c: Cue) => void }) {
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
   const panel = cues.find((c) => c.template.startsWith("panel."));
-  const thirds = cues.filter((c) => !c.template.startsWith("panel.") && c.template !== "player_tag.speed").slice(0, 2);
+  const thirds = lowerThirds(cues, dismissed);
   return (
     <div className="overlay" aria-live="polite">
       {panel && (
@@ -25,7 +33,10 @@ export function Overlay({ cues, onWhy }: { cues: Cue[]; onWhy: (c: Cue) => void 
           <div key={c.id} className={`third t-${c.template.split(".")[0]} ${c.template.includes("goal") ? "goal" : ""}`}>
             <div className="third-title">{c.title} {badge(c)}</div>
             <div className="third-text">{c.text}</div>
-            <button className="why" onClick={() => onWhy(c)} aria-label={`Why: ${c.title}`}>Why?</button>
+            <div className="third-actions">
+              <button className="why" onClick={() => onWhy(c)} aria-label={`Why: ${c.title}`}>Why?</button>
+              <button className="dismiss" onClick={() => setDismissed((d) => new Set(d).add(c.id))} aria-label={`Dismiss: ${c.title}`} title="Dismiss">×</button>
+            </div>
           </div>
         ))}
       </div>

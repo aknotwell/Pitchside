@@ -46,6 +46,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; pa
 .scoreboard .live { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
 .scoreboard .live.on { color: var(--accent); border-color: var(--accent); }
 .overlay { position: absolute; inset: 0; pointer-events: none; }
+.restart-label { position: absolute; top: 54px; left: 12px; transform: translateY(-4px); z-index: 2; pointer-events: none; white-space: nowrap;
+  background: rgba(8,12,18,.88); border-left: 4px solid var(--accent); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 14px;
+  opacity: 0; transition: opacity .3s ease, transform .3s ease; }
+.restart-label.on { opacity: 1; transform: none; }
 .thirds { position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 8px; max-width: min(560px, 80%); }
 .third, .panel { pointer-events: auto; background: rgba(8,12,18,.92); border-left: 4px solid var(--accent); padding: 8px 12px; border-radius: 6px; animation: slide .35s ease-out; }
 .third.goal { border-left-color: var(--warn); } .third.t-graphic { border-left-color: var(--ai); }
@@ -55,6 +59,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; pa
 .badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; letter-spacing: .02em; }
 .badge.ai { background: var(--ai); } .badge.data { background: #2b3a4b; } .badge.fb { background: #6b4e16; }
 .why { margin-top: 6px; font-size: 12px; padding: 2px 8px; }
+.third-actions { display: flex; gap: 6px; align-items: center; } .dismiss { margin-top: 6px; font-size: 14px; line-height: 1; padding: 2px 8px; }
 @keyframes slide { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .third, .panel { animation: none; } }
 .side { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }

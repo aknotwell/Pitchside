@@ -35,9 +35,9 @@ EventType = Literal[
     "save",
 ]
 
-Persona = Literal["analyst", "casual"]
+Persona = Literal["analyst", "casual", "academy", "scout"]
 LANGUAGES: tuple[str, ...] = ("en", "es", "ja")
-PERSONAS: tuple[Persona, ...] = ("analyst", "casual")
+PERSONAS: tuple[Persona, ...] = ("analyst", "casual", "academy", "scout")
 
 
 class Player(BaseModel):
@@ -105,10 +105,21 @@ class PlayerPos(BaseModel):
     y: float
 
 
+RestartKind = Literal["kickoff", "throw_in", "goal_kick", "corner", "free_kick", "penalty"]
+
+
+class Restart(BaseModel):
+    """The restart the ball is dead for, and the side ("h"/"a") taking it."""
+
+    kind: RestartKind
+    team: Literal["h", "a"]
+
+
 class Frame(BaseModel):
     t_s: float
     ball: tuple[float, float, float]
     players: list[PlayerPos]
+    restart: Restart | None = None
 
 
 class TrackingBatch(BaseModel):

@@ -19,13 +19,14 @@ from opentelemetry import trace
 
 from matchlens.azure_io.common import async_credential, create_once, settings, setup_telemetry
 from matchlens.contracts import Moment
-from matchlens.story.workflow import CHECKPOINT_TYPES, FoundryExplainer, Storyteller
+from matchlens.story.workflow import CHECKPOINT_TYPES, FoundryExplainer, Storyteller, TemplateWriter
 
 log = logging.getLogger("matchlens.storyteller")
 tracer = trace.get_tracer("matchlens.storyteller")
 
 WORKERS = int(os.environ.get("STORY_WORKERS", "4"))
 OPS_PK = "_ops"
+ROSTER_RETRIES = 3  # deliveries to wait for a roster before explaining without the wrong-name check (queue max is 5)
 
 
 class StorytellerService:
@@ -47,8 +48,12 @@ class StorytellerService:
         self.runs = db.get_container_client("runs")
         storage = CosmosCheckpointStorage(container_client=db.get_container_client("checkpoints"),
                                           allowed_checkpoint_types=CHECKPOINT_TYPES)
-        explainer = FoundryExplainer(s.foundry_project_endpoint, s.foundry_deployments, self.cred)
-        self.story = Storyteller(explainer, roster=lambda mid: self.rosters.get(mid, set()),
+        if s.foundry_project_endpoint:
+            writer = FoundryExplainer(s.foundry_project_endpoint, s.foundry_deployments, self.cred)
+        else:
+            log.warning("FOUNDRY_PROJECT_ENDPOINT is not set: writing every persona from templates")
+            writer = TemplateWriter()
+        self.story = Storyteller(writer, roster=lambda mid: self.rosters.get(mid, set()),
                                  checkpoint_storage=storage, fault=self._chaos_fault)
         self.chaos_armed = False
         self.sb = ServiceBusClient(s.servicebus_fqdn, credential=self.cred)
@@ -112,16 +117,21 @@ class StorytellerService:
                 c.data["audio"] = paths[c.lang]
 
     # ------------------------------------------------------------ work
-    async def _roster(self, match_id: str) -> None:
-        if match_id in self.rosters:
-            return
+    async def _roster(self, match_id: str) -> bool:
+        """Cache the match's player names for the verifier's wrong-name check. An empty or failed
+        read is not cached: it is retried on the next moment, so the check never fails open for good."""
+        if self.rosters.get(match_id):
+            return True
         try:
             doc = await self.state.read_item(match_id, partition_key=match_id)
             meta = doc.get("meta") or {}
             names = {p["name"] for t in ("home", "away") for p in (meta.get(t) or {}).get("players", [])}
+        except Exception as exc:
+            log.warning("roster for %s unavailable: %s", match_id, exc)
+            return False
+        if names:
             self.rosters[match_id] = names
-        except Exception:
-            self.rosters[match_id] = set()
+        return bool(names)
 
     async def _worker(self, n: int) -> None:
         from azure.servicebus import NEXT_AVAILABLE_SESSION
@@ -150,7 +160,11 @@ class StorytellerService:
         moment = Moment.model_validate_json(str(msg))
         with tracer.start_as_current_span("storyteller.moment", attributes={
                 "match.id": moment.match_id, "moment.kind": moment.kind, "moment.id": moment.moment_id}):
-            await self._roster(moment.match_id)
+            if not await self._roster(moment.match_id) and msg.delivery_count < ROSTER_RETRIES:
+                # Without the roster the verifier can't reject a wrong player name: wait for it.
+                await asyncio.sleep(2)
+                await receiver.abandon_message(msg)
+                return
             try:
                 cues, info = await self.story.tell(moment)
             except Exception as exc:
@@ -163,6 +177,8 @@ class StorytellerService:
             await self.runs.upsert_item({"id": f"run-{moment.moment_id}", "matchId": moment.match_id,
                                          "type": "storyRun", "at": time.time(), **info})
             await receiver.complete_message(msg)
+            if moment.kind == "full_time":
+                self.rosters.pop(moment.match_id, None)
             log.info("moment %s (%s): %d cues via %s in %d ms%s", moment.moment_id, moment.kind, info["cues"],
                      info["source"], info["ms"], f", resumed from {info['resumed_from']}" if info["resumed_from"] else "")
 

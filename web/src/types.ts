@@ -1,8 +1,17 @@
-export type Persona = "analyst" | "casual";
+export type Persona = "analyst" | "casual" | "academy" | "scout";
+export const PERSONAS: { id: Persona; label: string; hint: string }[] = [
+  { id: "casual", label: "Fan", hint: "Plain words, why it matters" },
+  { id: "analyst", label: "Analyst", hint: "Tactics and metrics" },
+  { id: "academy", label: "Academy", hint: "A coach's lesson for young players" },
+  { id: "scout", label: "Scout", hint: "What the moment says about the players" },
+];
 export type Lang = "en" | "es" | "ja";
 
 export interface PlayerPos { id: string; x: number; y: number }
-export interface Frame { t_s: number; ball: [number, number, number]; players: PlayerPos[] }
+export type RestartKind = "kickoff" | "throw_in" | "goal_kick" | "corner" | "free_kick" | "penalty";
+/** The restart the ball is dead for, and the side taking it. Absent in old replays and while play is live. */
+export interface Restart { kind: RestartKind; team: "h" | "a" }
+export interface Frame { t_s: number; ball: [number, number, number]; players: PlayerPos[]; restart?: Restart | null }
 
 export interface Evidence {
   key: string; label: string; value: number | string; unit?: string;
@@ -22,6 +31,9 @@ export interface TeamSummary {
   id: string; name: string; goals: number; shots: number; shotsOnTarget: number; xg: number;
   passes: number; passAccuracy: number; finalThirdEntries: number; ppda: number | null;
   pressures: number; turnovers: number;
+  // Pass quality and shot speed (absent from state docs written before they were added)
+  avgPassLengthM?: number; avgPassDifficulty?: number; hardPasses?: number; hardPassAccuracy?: number | null;
+  fastestShotKmh?: number;
 }
 
 export interface MatchState {
