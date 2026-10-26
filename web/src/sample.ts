@@ -46,13 +46,16 @@ export function sampleFrames(fs: Frame[], t: number): Frame | null {
 }
 
 /** Merges `incoming` into `sorted` by `key`, keeping the copy already held when a time repeats (a
- *  recording and the socket overlap; a failover can resend). The common case, newer items, appends. */
+ *  recording and the socket overlap; a failover can resend). Times already held are dropped first, so
+ *  a recording tail the socket already delivered leaves `sorted` as it is instead of rebuilding a whole
+ *  match. The common case, newer items, appends. */
 export function mergeByTime<T>(sorted: T[], incoming: T[], key: (x: T) => number): T[] {
-  if (!incoming.length) return sorted;
+  const fresh = incoming.filter((x) => { const held = lastAtOrBefore(sorted, key(x), key); return !held || key(held) !== key(x); });
+  if (!fresh.length) return sorted;
   const last = sorted.length ? key(sorted[sorted.length - 1]) : -Infinity;
-  if (incoming.every((x, i) => key(x) > (i ? key(incoming[i - 1]) : last))) { sorted.push(...incoming); return sorted; }
+  if (fresh.every((x, i) => key(x) > (i ? key(fresh[i - 1]) : last))) { sorted.push(...fresh); return sorted; }
   const byTime = new Map<number, T>();
-  for (const x of [...incoming, ...sorted]) byTime.set(key(x), x);
+  for (const x of [...fresh, ...sorted]) byTime.set(key(x), x);
   return [...byTime.values()].sort((a, b) => key(a) - key(b));
 }
 

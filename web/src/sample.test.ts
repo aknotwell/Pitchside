@@ -62,6 +62,27 @@ describe("mergeByTime", () => {
     expect(merged.map(t)).toEqual([0, 1, 2, 5, 6]);
     expect(merged.filter((x) => x.t >= 5).every((x) => x.src === "held")).toBe(true);
   });
+
+  it("leaves the held list as it is when a tail brings nothing it doesn't already hold", () => {
+    const held = items(...Array.from({ length: 600 }, (_, i) => i / 10));
+    const tail = held.slice(-100).map((x) => ({ ...x, src: "recording" }));
+    expect(mergeByTime(held, tail, t)).toBe(held);
+    expect(held).toHaveLength(600);
+  });
+
+  it("merges like a rebuild of both lists, keeping the held copy of a repeated time", () => {
+    let seed = 7;
+    const rand = (n: number) => { seed = (seed * 48271) % 2147483647; return seed % n; };
+    for (let run = 0; run < 200; run++) {
+      const held = [...new Set(Array.from({ length: rand(20) }, () => rand(40)))].sort((a, b) => a - b).map((x) => ({ t: x, src: "held" }));
+      const incoming = Array.from({ length: rand(20) }, () => ({ t: rand(50), src: `in${rand(3)}` }));
+      if (rand(2)) incoming.sort((a, b) => a.t - b.t);
+      const byTime = new Map<number, { t: number; src: string }>();
+      for (const x of [...incoming, ...held]) byTime.set(x.t, x);
+      const rebuilt = [...byTime.values()].sort((a, b) => a.t - b.t);
+      expect(mergeByTime([...held], incoming, t)).toEqual(rebuilt);
+    }
+  });
 });
 
 describe("lastAtOrBefore", () => {
