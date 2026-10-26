@@ -13,8 +13,9 @@ export const BROADCAST_DELAY_S = 10;
 interface Clock { matchT: number; wall: number; speed: number }
 interface Heard { wall: number; t: number }
 
-/** One broadcast tick, as sent on the socket and kept in the match's recording. */
-interface Tick { type: "tick"; frames?: Frame[]; state?: MatchState | null }
+/** One broadcast tick, as sent on the socket and kept in the match's recording. `wallMs` is the
+ *  server's clock when it was sent; recordings made before it existed lack it. */
+export interface Tick { type: "tick"; frames?: Frame[]; state?: MatchState | null; wallMs?: number }
 
 interface LiveFeed extends Feed {
   states: MatchState[];
@@ -71,8 +72,20 @@ function onFrames(f: LiveFeed, incoming: Frame[]) {
   f.frames = mergeByTime(f.frames, incoming, byT);
 }
 
-/** Everything broadcast before this viewer joined. Ticks are about a second of wall time apart, so the
- *  tail also gives a first estimate of the simulator's pace, sparing the socket estimate a slow warm-up. */
+/** The simulator's pace over a recording's last ten ticks, from their server clocks (older recordings
+ *  lack them, and their ticks are taken as a second apart), and the newest match time recorded. */
+export function recordedPace(ticks: Tick[]): { pace: number; newest: number } | null {
+  const ends = ticks.flatMap((t) => (t.frames?.length ? [{ t: t.frames[t.frames.length - 1].t_s, wallMs: t.wallMs }] : []))
+    .sort((a, b) => a.t - b.t);
+  const k = Math.min(10, ends.length - 1);
+  if (k < 2) return null;
+  const a = ends[ends.length - 1 - k], b = ends[ends.length - 1];
+  const wallS = a.wallMs !== undefined && b.wallMs !== undefined && b.wallMs > a.wallMs ? (b.wallMs - a.wallMs) / 1000 : k;
+  return { pace: pace(b.t - a.t, wallS), newest: b.t };
+}
+
+/** Everything broadcast before this viewer joined. The tail also gives a first estimate of the simulator's
+ *  pace from the ticks' server clocks, sparing the socket estimate a slow warm-up. */
 async function loadRecording(f: LiveFeed, matchId: string) {
   f.recording = "loading";
   try {
@@ -82,11 +95,10 @@ async function loadRecording(f: LiveFeed, matchId: string) {
     const frames = ticks.flatMap((t) => t.frames ?? []).sort((a, b) => a.t_s - b.t_s);
     f.frames = mergeByTime(f.frames, frames, byT);
     f.states = mergeByTime(f.states, ticks.flatMap((t) => (t.state ? [t.state] : [])).sort((a, b) => a.clockS - b.clockS), byClock);
-    const ends = ticks.flatMap((t) => (t.frames?.length ? [t.frames[t.frames.length - 1].t_s] : []));
-    const k = Math.min(10, ends.length - 1);
-    if (k >= 2 && !f.states[f.states.length - 1]?.ended) {
-      f.paceHint = pace(ends[ends.length - 1] - ends[ends.length - 1 - k], k);
-      if (!f.clock) f.clock = { matchT: ends[ends.length - 1], wall: wallNow(), speed: f.paceHint };
+    const recorded = recordedPace(ticks);
+    if (recorded && !f.states[f.states.length - 1]?.ended) {
+      f.paceHint = recorded.pace;
+      if (!f.clock) f.clock = { matchT: recorded.newest, wall: wallNow(), speed: f.paceHint };
       else if (f.heard.length < 2 || f.clock.wall - f.heard[0].wall < 3) f.clock = { ...f.clock, speed: f.paceHint };
     }
     f.recording = "loaded";

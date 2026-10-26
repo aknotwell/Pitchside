@@ -217,7 +217,8 @@ class InterpreterService:
             if len(frames) > MAX_FRAMES_PER_TICK:  # keep evenly spaced frames; the browser interpolates
                 step = len(frames) / MAX_FRAMES_PER_TICK
                 frames = [frames[int(k * step)] for k in range(MAX_FRAMES_PER_TICK - 1)] + [frames[-1]]
-            tick = {"type": "tick", "matchId": mid, "frames": frames, "state": self.pending_state.pop(mid, None)}
+            tick = {"type": "tick", "matchId": mid, "frames": frames, "state": self.pending_state.pop(mid, None),
+                    "wallMs": int(time.time() * 1000)}  # lets a late joiner read the pace off the recording
             self.last_tick[mid] = now
             self._record_nowait(mid, tick)  # even when back-pressure drops the publish below
             self._publish_nowait(frames_group(mid), tick)

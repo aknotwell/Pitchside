@@ -100,7 +100,7 @@ async def test_every_tick_is_appended_to_the_match_recording(monkeypatch):
     svc, published = _emitter(rec)
     it = MatchInterpreter("m1")
     now = [100.0]
-    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: now[0], time=lambda: 1_700_000_000 + now[0]))
     await svc._emit([(it, _out(0.0, 0.0))])
     now[0] += interp.TICK_EVERY_S
     await svc._emit([(it, _out(0.2, 0.2))])
@@ -109,6 +109,7 @@ async def test_every_tick_is_appended_to_the_match_recording(monkeypatch):
     lines = _lines(rec)
     assert [ln["frames"][0]["t_s"] for ln in lines] == [0.0, 0.2]
     assert lines[0] == published[0][1] and lines[0]["type"] == "tick" and "meta" not in lines[0]["state"]
+    assert [ln["wallMs"] for ln in lines] == [1_700_000_100_000, 1_700_000_101_000]
 
 
 async def test_recording_survives_a_replica_restart_and_backpressure(monkeypatch):
@@ -120,7 +121,7 @@ async def test_recording_survives_a_replica_restart_and_backpressure(monkeypatch
     rec = FakeContainer()
     rec.blobs["live/m1.ndjson"] = b'{"type":"tick","frames":[]}\n'
     svc, published = _emitter(rec, inflight=interp.MAX_INFLIGHT_PUBLISHES)
-    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0))
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0, time=lambda: 1_700_000_050.0))
     await svc._emit([(MatchInterpreter("m1"), _out(30.0, 30.0))])
     await asyncio.gather(*svc.bg)
 
@@ -134,7 +135,7 @@ async def test_a_recording_failure_never_stops_the_live_feed(monkeypatch):
     import matchlens.services.interpreter as interp
 
     svc, published = _emitter(FakeContainer(fail=True))
-    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0))
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0, time=lambda: 1_700_000_050.0))
     await svc._emit([(MatchInterpreter("m1"), _out(30.0, 30.0))])
     await asyncio.gather(*svc.bg)
 
@@ -149,7 +150,7 @@ async def test_two_first_appends_racing_to_create_the_blob_both_land(monkeypatch
     rec = FakeContainer()
     svc, _ = _emitter(rec)
     now = [100.0]
-    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: now[0], time=lambda: 1_700_000_000 + now[0]))
     it = MatchInterpreter("m1")
     await svc._emit([(it, _out(0.0, 0.0))])
     now[0] += interp.TICK_EVERY_S
@@ -167,7 +168,7 @@ async def test_a_stuck_recording_never_holds_up_the_batch(monkeypatch):
     import matchlens.services.interpreter as interp
 
     svc, published = _emitter(FakeContainer(hang=True))
-    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0))
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0, time=lambda: 1_700_000_050.0))
     monkeypatch.setattr(interp, "RECORD_TIMEOUT_S", 0.05)
     await asyncio.wait_for(svc._emit([(MatchInterpreter("m1"), _out(30.0, 30.0))]), timeout=0.02)
     await asyncio.gather(*svc.bg)
@@ -184,7 +185,7 @@ async def test_recordings_past_the_in_flight_cap_are_dropped_and_counted(monkeyp
     rec = FakeContainer()
     svc, published = _emitter(rec)
     svc.recording_inflight = interp.MAX_INFLIGHT_RECORDINGS
-    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0))
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0, time=lambda: 1_700_000_050.0))
     await svc._emit([(MatchInterpreter("m1"), _out(30.0, 30.0))])
     await asyncio.gather(*svc.bg)
 
