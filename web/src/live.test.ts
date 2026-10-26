@@ -58,6 +58,24 @@ describe("keepLoadingRecording", () => {
     expect(f.frames.map((x) => x.t_s)).toEqual([-0.2, 0, 0.8, 1, 1.8, 2]);
   });
 
+  it("keeps retrying an empty recording, created but not yet appended to", async () => {
+    vi.useFakeTimers();
+    const asked: number[] = [];
+    const t0 = Date.now();
+    vi.stubGlobal("fetch", async () => {
+      asked.push((Date.now() - t0) / 1000);
+      return new Response(asked.length < 3 ? "" : ticks(3, 1, 1).map((x) => JSON.stringify(x)).join("\n"));
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = liveFeed();
+    f.connected = true;
+    const done = keepLoadingRecording(f, "m1", () => true);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await done;
+    expect(asked).toEqual([0, 2, 7]);
+    expect(f.frames[0].t_s).toBe(-0.2);
+  });
+
   it("waits for the socket before asking", async () => {
     vi.useFakeTimers();
     const asked = recordingAt(0);

@@ -336,6 +336,8 @@ async def recording(match_id: str, request: Request):
     try:
         async with blob:
             size = (await blob.get_blob_properties()).size
+            if not size:  # created, but its first tick not yet appended
+                raise ResourceNotFoundError("recording is empty")
             body = await recording_cache.get(match_id, size, download)
     except ResourceNotFoundError as exc:  # usual at kick-off: nothing has been appended yet
         raise HTTPException(404, "recording not found") from exc

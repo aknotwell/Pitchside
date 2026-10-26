@@ -81,6 +81,11 @@ def test_recording_404s_for_a_match_without_one_and_rejects_bad_ids(client):
     assert client.get("/api/matches/bad.id/recording").status_code == 400
 
 
+def test_a_recording_created_before_its_first_tick_is_still_missing(client):
+    FakeBlobClient.blobs[KEY] = b""
+    assert client.get("/api/matches/m00042-abc/recording").status_code == 404
+
+
 def test_a_storage_failure_is_a_502_not_a_missing_recording(client):
     FakeBlobClient.down = True
     assert client.get("/api/matches/m00042-abc/recording").status_code == 502

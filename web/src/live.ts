@@ -86,7 +86,7 @@ export function recordedPace(ticks: Tick[]): { pace: number; newest: number } | 
   return { pace: pace(b.t - a.t, wallS), newest: b.t };
 }
 
-/** Everything broadcast before this viewer joined. The tail also gives a first estimate of the simulator's
+/** Everything broadcast before this viewer joined, and whether there was any. The tail also gives a first estimate of the simulator's
  *  pace from the ticks' server clocks, sparing the socket estimate a slow warm-up. */
 async function loadRecording(f: LiveFeed, matchId: string): Promise<boolean> {
   try {
@@ -102,7 +102,7 @@ async function loadRecording(f: LiveFeed, matchId: string): Promise<boolean> {
       if (!f.clock) f.clock = { matchT: recorded.newest, wall: wallNow(), speed: f.paceHint };
       else if (f.heard.length < 2 || f.clock.wall - f.heard[0].wall < 3) f.clock = { ...f.clock, speed: f.paceHint };
     }
-    return true;
+    return ticks.length > 0;  // an empty one was created before its first tick: try again
   } catch (e) {
     console.warn("recording load failed", e);
     return false;
