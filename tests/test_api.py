@@ -77,6 +77,8 @@ class FakeBlobs:
         blobs, key = self, (container, name)
 
         class _B:
+            _config = SimpleNamespace(max_single_get_size=32 * 1024 * 1024)
+
             def _check(self):
                 if blobs.down:
                     raise ServiceRequestError("storage unreachable")
@@ -163,7 +165,7 @@ async def test_a_burst_of_joiners_shares_one_download_and_new_ticks_are_never_mi
         assert blobs.downloads == 2  # a recording that stopped growing is never fetched again
 
 
-async def test_a_recording_bigger_than_one_get_downloads_while_ticks_keep_landing(monkeypatch):
+async def test_a_recording_bigger_than_one_get_downloads_while_ticks_keep_landing():
     """The real SDK against a storage stub that appends a tick after every GET, as a live match does."""
     import re
 
@@ -195,8 +197,7 @@ async def test_a_recording_bigger_than_one_get_downloads_while_ticks_keep_landin
     server_app = web.Application()
     server_app.router.add_route("*", "/{path:.*}", storage)
     async with TestServer(server_app) as server:
-        monkeypatch.setattr(api_mod, "RECORDING_RANGE", len(FIRST))
-        # a recording several GETs long: the SDK's own ranges would be this small too
+        # a recording several GETs long, read with the range this client's single GETs are set to
         async with BlobServiceClient(str(server.make_url("/devstoreaccount1")), max_single_get_size=len(FIRST),
                                      max_chunk_get_size=len(FIRST)) as blobs:
             app.state.blobs = blobs

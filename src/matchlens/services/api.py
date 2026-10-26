@@ -431,7 +431,6 @@ class RecordingCache:
 
 
 recording_cache = RecordingCache()
-RECORDING_RANGE = 32 * 1024 * 1024  # the shared client's max_single_get_size (the SDK default)
 
 
 @app.get("/api/matches/{match_id}/recording")
@@ -445,10 +444,12 @@ async def recording(match_id: str, request: Request):
 
     async def download(size: int) -> bytes:
         """The first `size` bytes, one GET per range. One download_blob() of several ranges pins the later
-        ones to the first's ETag, which the next live append changes. A prefix of an append blob never
-        changes, and each tick is one atomic append, so it ends on a whole line."""
-        return b"".join([await (await blob.download_blob(offset=o, length=min(RECORDING_RANGE, size - o))).readall()
-                         for o in range(0, size, RECORDING_RANGE)])
+        ones to the first's ETag, which the next live append changes. A range no longer than the client's
+        max_single_get_size is one GET. A prefix of an append blob never changes, and each tick is one
+        atomic append, so it ends on a whole line."""
+        step = blob._config.max_single_get_size
+        return b"".join([await (await blob.download_blob(offset=o, length=min(step, size - o))).readall()
+                         for o in range(0, size, step)])
 
     try:
         size = (await blob.get_blob_properties()).size
