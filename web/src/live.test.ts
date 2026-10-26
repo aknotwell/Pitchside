@@ -126,6 +126,24 @@ describe("keepLoadingRecording", () => {
     expect(f.frames.map((x) => x.t_s)).toEqual(named(5).flatMap((t) => t.frames!.map((x) => x.t_s)));
   });
 
+  it("reads the whole recording again when its offset is past the end", async () => {
+    vi.useFakeTimers();
+    let recorded = ticks(5, 1, 1);
+    const asked = serve(() => recorded);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = liveFeed();
+    f.connected = true;
+    void keepLoadingRecording(f, "m1", new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    recorded = ticks(2, 1, 1);  // shorter than the offset this viewer holds
+    f.recording.wanted++;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(asked.slice(1)).toEqual([`/api/matches/m1/recording?from=${bytes(ticks(5, 1, 1))}`, "/api/matches/m1/recording"]);
+    expect(f.recording.size).toBe(bytes(recorded));
+    expect(f.recording.loaded).toBe(f.recording.wanted);
+  });
+
   it("after a drop asks only for what was recorded since, and stops once the match has ended", async () => {
     vi.useFakeTimers();
     let recorded = ticks(3, 1, 1);

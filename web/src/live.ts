@@ -101,6 +101,10 @@ async function loadRecording(f: LiveFeed, matchId: string, signal: AbortSignal):
   try {
     const from = f.recording.size;
     const r = await fetch(`${API}/api/matches/${matchId}/recording${from ? `?from=${from}` : ""}`, { signal });
+    if (r.status === 400 && from) {  // an offset past the end isn't from this recording: read it whole
+      f.recording.size = 0;
+      return await loadRecording(f, matchId, signal);
+    }
     if (!r.ok) throw new Error(`${r.status}`);
     const body = await r.arrayBuffer();  // already inflated: its length is bytes of the recording
     const ticks: Tick[] = new TextDecoder().decode(body).split("\n").filter(Boolean).map((line) => JSON.parse(line));
