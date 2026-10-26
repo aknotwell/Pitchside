@@ -179,7 +179,8 @@ export function connect(f: LiveFeed, matchId: string, persona: Persona, lang: La
       onConnected: (up) => {
         if (stopped) return;
         f.connected = up;
-        if (up && opens++ > 0) f.recording.wanted++;
+        // A reopen, or a first open replacing another viewer's or language's socket, follows a gap only the recording has
+        if (up && (opens++ > 0 || f.frames.length)) f.recording.wanted++;
       },
     });
   })();

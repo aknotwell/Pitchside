@@ -227,6 +227,24 @@ describe("connect", () => {
     vi.useRealTimers();
   });
 
+  it("a viewer or language switch asks for what aired between the two sockets, and joining doesn't", async () => {
+    vi.stubGlobal("WebSocket", FakeSocket);
+    vi.mocked(api.cues).mockResolvedValue({ cues: [] });
+    vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
+    const f = liveFeed();
+    const stopCasual = connect(f, "m1", "casual", "en");
+    await settle();
+    FakeSocket.all[0].onopen?.();
+    expect(f.recording.wanted).toBe(1);
+    FakeSocket.all[0].send({ type: "tick", frames: [{ t_s: 5, ball: [0, 0, 0], players: [] }] });
+
+    stopCasual();
+    connect(f, "m1", "analyst", "en");
+    await settle();
+    FakeSocket.all[1].onopen?.();
+    expect(f.recording.wanted).toBe(2);
+  });
+
   it("a closed socket's last messages and close don't touch the next one's feed", async () => {
     vi.stubGlobal("WebSocket", FakeSocket);
     vi.mocked(api.cues).mockResolvedValue({ cues: [] });
