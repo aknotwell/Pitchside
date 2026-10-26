@@ -1,5 +1,5 @@
 import type { Live } from "../player";
-import { SPEEDS } from "../playback";
+import { atBarEnd, SEEK_STEP_S, SPEEDS } from "../playback";
 import { Choice, Dropdown } from "./Dropdown";
 
 /** Play/pause, a seek bar over everything played so far, speed, and a way back to the live edge. */
@@ -12,8 +12,12 @@ export function Transport({ live, isLive }: { live: Live; isLive: boolean }) {
         <span aria-hidden="true">{live.paused ? "▶" : "❚❚"}</span><span className="lbl">{live.paused ? " Play" : " Pause"}</span>
       </button>
       <span className="clock">{clock}</span>
-      <input type="range" aria-label="Match time" aria-valuetext={clock} min={tl?.start ?? 0} max={tl?.end ?? 0} step={1}
-             value={live.playhead} disabled={!tl} onChange={(e) => c.seek(Number(e.target.value))} />
+      <input type="range" aria-label="Match time" aria-valuetext={clock} min={tl?.start ?? 0} max={tl?.end ?? 0} step={SEEK_STEP_S}
+             value={live.playhead} disabled={!tl}
+             onChange={(e) => {
+               const t = Number(e.target.value);
+               if (isLive && atBarEnd(t, Number(e.target.max))) c.goLive(); else c.seek(t);
+             }} />
       {isLive
         ? !live.followLive && tl && <button className="golive" onClick={c.goLive}><span aria-hidden="true">●</span> Live</button>
         : <span className="clock">{live.endClock}</span>}

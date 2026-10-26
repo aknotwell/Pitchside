@@ -50,9 +50,16 @@ export const play = (tr: Transport, now: number, tl: Timeline): Transport =>
 
 export const togglePause = (tr: Transport, now: number, tl: Timeline) => (tr.paused ? play : pause)(tr, now, tl);
 
-/** Dragging a live match's bar to the right end (within a wall second of it) goes back to live. */
-export const seek = (tr: Transport, now: number, tl: Timeline, t: number): Transport =>
-  (tl.live && t >= tl.end - Math.max(1, tl.rate) ? goLive(tr, now, tl) : hold(tr, now, tl, t));
+export const seek = (tr: Transport, now: number, tl: Timeline, t: number): Transport => hold(tr, now, tl, t);
+
+/** Seek bar step, match seconds. A range input keeps its value a whole number of steps from its min, so
+ *  its top value, where dragging to the right end or pressing End lands, can be up to a step short of max. */
+export const SEEK_STEP_S = 1;
+
+/** Whether a seek bar value is the bar's top value, which on a live match means back to live. The value a
+ *  step below, where the Left key lands from there, is a moment like any other. Compare with the bar's own
+ *  max: the live edge has moved on by the time the input event arrives. */
+export const atBarEnd = (value: number, max: number) => value > max - SEEK_STEP_S;
 
 export const setSpeed = (tr: Transport, now: number, tl: Timeline, speed: number): Transport =>
   hold(tr, now, tl, positionAt(tr, now, tl), speed);

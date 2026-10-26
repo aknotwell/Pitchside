@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  crossed, displayClock, goLive, nearestSpeed, pause, play, playheadAt, positionAt, rebase, type ReplayEvent, scoreboardAt, seek, setSpeed,
+  atBarEnd, crossed, displayClock, goLive, nearestSpeed, pause, play, playheadAt, positionAt, rebase, type ReplayEvent, scoreboardAt, seek, setSpeed,
   settle, speedOf, type Timeline, togglePause, type Transport,
 } from "./playback";
 
@@ -112,10 +112,13 @@ describe("transport", () => {
     expect(positionAt(seek(at(10), 100, replay, 5000), 100, replay)).toBe(1200);
   });
 
-  it("dragging to the right end of a live match goes live", () => {
-    expect(seek(at(10), 100, live(), 579.5)).toMatchObject({ followLive: true, paused: false });
-    expect(seek(at(10), 100, live(), 570).followLive).toBe(false);
-    expect(seek(at(10), 100, replay, 1200).followLive).toBe(false);
+  it("only the seek bar's top value goes live; a step back stays back at any speed", () => {
+    // Chrome keeps a range's value whole steps from its min: max 480.7 from min 12.3 tops out at 480.3
+    expect(atBarEnd(480.3, 480.7)).toBe(true);
+    expect(atBarEnd(479.3, 480.7)).toBe(false);  // the Left key from the top
+    const back = seek(following, 100, live(580, 4), 579.3);  // a step short of the edge, the simulator at 4x
+    expect(back.followLive).toBe(false);
+    expect(positionAt(back, 100, live(580, 4))).toBe(579.3);
   });
 
   it("never plays past the delayed live edge", () => {
