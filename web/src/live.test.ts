@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { keepLoadingRecording, liveFeed, recordedPace, type Tick } from "./live";
-import type { Frame } from "./types";
+import { api } from "./api";
+import { connect, keepLoadingRecording, liveFeed, recordedPace, type Tick } from "./live";
+import type { Cue, Frame } from "./types";
+
+vi.mock("./api", () => ({ API: "", api: { cues: vi.fn(), negotiate: vi.fn(), match: vi.fn() } }));
 
 const frame = (t_s: number): Frame => ({ t_s, ball: [0, 0, 0], players: [] });
 /** Ticks `every` match seconds apart, `wallS` server seconds apart (none: an old recording). */
@@ -78,5 +81,57 @@ describe("keepLoadingRecording", () => {
     active = false;
     await vi.advanceTimersByTimeAsync(120_000);
     expect(asked).toEqual([0, 2]);
+  });
+});
+
+describe("connect", () => {
+  class FakeSocket {
+    static all: FakeSocket[] = [];
+    onopen: (() => void) | null = null;
+    onclose: (() => void) | null = null;
+    onmessage: ((ev: { data: string }) => void) | null = null;
+    constructor(public url: string) { FakeSocket.all.push(this); }
+    close() {}
+    send(msg: object) { this.onmessage?.({ data: JSON.stringify(msg) }); }
+  }
+  const cue = (id: string) => ({ id, display_at_s: 1 }) as Cue;
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  afterEach(() => { vi.unstubAllGlobals(); FakeSocket.all = []; });
+
+  it("a viewer switched away from never writes their late cue history", async () => {
+    vi.stubGlobal("WebSocket", FakeSocket);
+    let arrive: (v: { cues: Cue[] }) => void = () => {};
+    vi.mocked(api.cues).mockReturnValueOnce(new Promise((r) => { arrive = r; })).mockResolvedValueOnce({ cues: [cue("analyst-1")] });
+    vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
+    const f = liveFeed();
+    const stopCasual = connect(f, "m1", "casual", "en");
+    stopCasual();
+    connect(f, "m1", "analyst", "en");
+    await settle();
+    arrive({ cues: [cue("casual-1")] });
+    await settle();
+    expect([...f.byId.keys()]).toEqual(["analyst-1"]);
+    expect(FakeSocket.all).toHaveLength(1);
+  });
+
+  it("a closed socket's last messages and close don't touch the next one's feed", async () => {
+    vi.stubGlobal("WebSocket", FakeSocket);
+    vi.mocked(api.cues).mockResolvedValue({ cues: [] });
+    vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
+    const f = liveFeed();
+    const stopFirst = connect(f, "m1", "casual", "en");
+    await settle();
+    const [first] = FakeSocket.all;
+    first.onopen?.();
+    stopFirst();
+    connect(f, "m1", "casual", "es");
+    await settle();
+    FakeSocket.all[1].onopen?.();
+    first.send({ type: "cue", cue: cue("english") });
+    first.onclose?.();
+    FakeSocket.all[1].send({ type: "cue", cue: cue("spanish") });
+    expect(f.connected).toBe(true);
+    expect([...f.byId.keys()]).toEqual(["spanish"]);
+    expect(f.late.map((c) => c.id)).toEqual(["spanish"]);
   });
 });

@@ -123,6 +123,44 @@ export async function keepLoadingRecording(f: LiveFeed, matchId: string, active:
   }
 }
 
+/** One viewer's live connection: their cue history, then the socket. Returns its stop. Nothing from a
+ *  stopped connection (a late history fetch, a closing socket's last messages) reaches the feed, which
+ *  by then belongs to the viewer or language picked next. */
+export function connect(f: LiveFeed, matchId: string, persona: Persona, lang: Lang): () => void {
+  let ws: WebSocket | null = null;
+  let stopped = false;
+  f.byId = new Map();
+  f.late = [];
+  (async () => {
+    try {
+      const hist = await api.cues(matchId, persona, lang, CUE_HISTORY).catch(() => ({ cues: [] as Cue[] }));
+      if (stopped) return;
+      for (const c of hist.cues) f.byId.set(c.id, c);
+      const { url } = await api.negotiate(matchId, persona, lang);
+      if (stopped) return;
+      ws = new WebSocket(url);
+      ws.onopen = () => { if (!stopped) f.connected = true; };
+      ws.onclose = () => { if (!stopped) f.connected = false; };
+      ws.onmessage = (ev) => {
+        if (stopped) return;
+        try {
+          let msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+          if (typeof msg === "string") msg = JSON.parse(msg); // tolerate double-encoded payloads
+          if (msg.type === "tick") {
+            onFrames(f, (msg.frames ?? []) as Frame[]);
+            if (msg.state) f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
+          } else if (msg.type === "frames") onFrames(f, msg.frames as Frame[]);
+          else if (msg.type === "state") f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
+          else if (msg.type === "cue") { f.byId.set(msg.cue.id, msg.cue as Cue); f.late.push(msg.cue as Cue); }
+        } catch { /* ignore non-JSON */ }
+      };
+    } catch (e) {
+      console.warn("live connect failed", e);
+    }
+  })();
+  return () => { stopped = true; ws?.close(); f.connected = false; };
+}
+
 export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lang): Live {
   const feed = useRef<LiveFeed | null>(null);
 
@@ -141,37 +179,7 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
 
   useEffect(() => {
     const f = feed.current;
-    if (!matchId || !f) return;
-    let ws: WebSocket | null = null;
-    let stopped = false;
-    f.byId = new Map();
-    f.late = [];
-    (async () => {
-      try {
-        const hist = await api.cues(matchId, persona, lang, CUE_HISTORY).catch(() => ({ cues: [] as Cue[] }));
-        for (const c of hist.cues) f.byId.set(c.id, c);
-        const { url } = await api.negotiate(matchId, persona, lang);
-        if (stopped) return;
-        ws = new WebSocket(url);
-        ws.onopen = () => { f.connected = true; };
-        ws.onclose = () => { f.connected = false; };
-        ws.onmessage = (ev) => {
-          try {
-            let msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
-            if (typeof msg === "string") msg = JSON.parse(msg); // tolerate double-encoded payloads
-            if (msg.type === "tick") {
-              onFrames(f, (msg.frames ?? []) as Frame[]);
-              if (msg.state) f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
-            } else if (msg.type === "frames") onFrames(f, msg.frames as Frame[]);
-            else if (msg.type === "state") f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
-            else if (msg.type === "cue") { f.byId.set(msg.cue.id, msg.cue as Cue); f.late.push(msg.cue as Cue); }
-          } catch { /* ignore non-JSON */ }
-        };
-      } catch (e) {
-        console.warn("live connect failed", e);
-      }
-    })();
-    return () => { stopped = true; ws?.close(); f.connected = false; };
+    return matchId && f ? connect(f, matchId, persona, lang) : undefined;
   }, [matchId, persona, lang]);
 
   return usePlayer(feed, matchId, true, 1);
