@@ -100,6 +100,8 @@ async def test_a_burst_of_joiners_shares_one_download_and_new_ticks_are_never_mi
         FakeBlobClient.blobs[KEY] = FIRST + b'{"type":"tick","frames":[{"t_s":1.0}]}\n'
         later = await c.get("/api/matches/m00042-abc/recording")
         assert later.content == FakeBlobClient.blobs[KEY] and FakeBlobClient.downloads == 2
+        assert (await c.get("/api/matches/m00042-abc/recording")).content == later.content
+        assert FakeBlobClient.downloads == 2  # a recording that stopped growing is never fetched again
 
 
 async def test_a_recording_bigger_than_one_get_downloads_while_ticks_keep_landing(monkeypatch):

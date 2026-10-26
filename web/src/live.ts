@@ -88,9 +88,9 @@ export function recordedPace(ticks: Tick[]): { pace: number; newest: number } | 
 
 /** Everything broadcast before this viewer joined, and whether there was any. The tail also gives a first estimate of the simulator's
  *  pace from the ticks' server clocks, sparing the socket estimate a slow warm-up. */
-async function loadRecording(f: LiveFeed, matchId: string): Promise<boolean> {
+async function loadRecording(f: LiveFeed, matchId: string, signal: AbortSignal): Promise<boolean> {
   try {
-    const r = await fetch(`${API}/api/matches/${matchId}/recording`);
+    const r = await fetch(`${API}/api/matches/${matchId}/recording`, { signal });
     if (!r.ok) throw new Error(`${r.status}`);
     const ticks: Tick[] = (await r.text()).split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const frames = ticks.flatMap((t) => t.frames ?? []).sort((a, b) => a.t_s - b.t_s);
@@ -104,7 +104,7 @@ async function loadRecording(f: LiveFeed, matchId: string): Promise<boolean> {
     }
     return ticks.length > 0;  // an empty one was created before its first tick: try again
   } catch (e) {
-    console.warn("recording load failed", e);
+    if (!signal.aborted) console.warn("recording load failed", e);
     return false;
   }
 }
@@ -114,11 +114,12 @@ const RECORDING_RETRY_S = [2, 5, 10, 20];
 const sleep = (s: number) => new Promise((resolve) => setTimeout(resolve, s * 1000));
 
 /** Loads the recording once the socket is open (whatever airs while it downloads then arrives on the
- *  socket), retrying with back-off while the match is live, until it loads or `active` turns false. */
-export async function keepLoadingRecording(f: LiveFeed, matchId: string, active: () => boolean) {
-  for (let failures = 0; active();) {
+ *  socket), retrying with back-off while the match is live, until it loads or `signal` aborts, which
+ *  also cancels a download in progress. */
+export async function keepLoadingRecording(f: LiveFeed, matchId: string, signal: AbortSignal) {
+  for (let failures = 0; !signal.aborted;) {
     if (!f.connected) { await sleep(0.2); continue; }
-    if (await loadRecording(f, matchId) || f.states[f.states.length - 1]?.ended) return;
+    if (await loadRecording(f, matchId, signal) || f.states[f.states.length - 1]?.ended) return;
     await sleep(RECORDING_RETRY_S[Math.min(failures++, RECORDING_RETRY_S.length - 1)]);
   }
 }
@@ -168,13 +169,13 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
     if (!matchId) return;
     const f = liveFeed();
     feed.current = f;
-    let stopped = false;
+    const stop = new AbortController();
     api.match(matchId).then((st) => {
       f.meta = st.meta ?? null;
       f.states = mergeByTime(f.states, [st], byClock);
     }).catch(() => {});
-    void keepLoadingRecording(f, matchId, () => !stopped);
-    return () => { stopped = true; if (feed.current === f) feed.current = null; };
+    void keepLoadingRecording(f, matchId, stop.signal);
+    return () => { stop.abort(); if (feed.current === f) feed.current = null; };
   }, [matchId]);
 
   useEffect(() => {

@@ -240,3 +240,16 @@ async def test_shutdown_lets_recording_appends_in_flight_land(monkeypatch):
     await svc.start()
 
     assert _lines(rec, "m1") == [{"type": "tick", "frames": []}]
+
+
+async def test_publishes_started_in_one_batch_count_toward_the_cap(monkeypatch):
+    import asyncio
+
+    import matchlens.services.interpreter as interp
+
+    svc, published = _emitter(FakeContainer(), inflight=interp.MAX_INFLIGHT_PUBLISHES - 1)
+    monkeypatch.setattr(interp, "time", SimpleNamespace(monotonic=lambda: 50.0, time=lambda: 1_700_000_050.0))
+    await svc._emit([(MatchInterpreter("m1"), _out(30.0, 30.0)), (MatchInterpreter("m2"), _out(30.0, 30.0))])
+    await asyncio.gather(*svc.bg)
+
+    assert len(published) == 1 and svc.dropped_ticks == 1

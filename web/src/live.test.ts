@@ -51,7 +51,7 @@ describe("keepLoadingRecording", () => {
     const asked = recordingAt(30);
     const f = liveFeed();
     f.connected = true;
-    const done = keepLoadingRecording(f, "m1", () => true);
+    const done = keepLoadingRecording(f, "m1", new AbortController().signal);
     await vi.advanceTimersByTimeAsync(60_000);
     await done;
     expect(asked).toEqual([0, 2, 7, 17, 37]);
@@ -69,7 +69,7 @@ describe("keepLoadingRecording", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const f = liveFeed();
     f.connected = true;
-    const done = keepLoadingRecording(f, "m1", () => true);
+    const done = keepLoadingRecording(f, "m1", new AbortController().signal);
     await vi.advanceTimersByTimeAsync(60_000);
     await done;
     expect(asked).toEqual([0, 2, 7]);
@@ -80,7 +80,7 @@ describe("keepLoadingRecording", () => {
     vi.useFakeTimers();
     const asked = recordingAt(0);
     const f = liveFeed();
-    void keepLoadingRecording(f, "m1", () => true);
+    void keepLoadingRecording(f, "m1", new AbortController().signal);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(asked).toEqual([]);
     f.connected = true;
@@ -93,12 +93,29 @@ describe("keepLoadingRecording", () => {
     const asked = recordingAt(Infinity);
     const f = liveFeed();
     f.connected = true;
-    let active = true;
-    void keepLoadingRecording(f, "m1", () => active);
+    const gone = new AbortController();
+    void keepLoadingRecording(f, "m1", gone.signal);
     await vi.advanceTimersByTimeAsync(3_000);
-    active = false;
+    gone.abort();
     await vi.advanceTimersByTimeAsync(120_000);
     expect(asked).toEqual([0, 2]);
+  });
+
+  it("cancels a download in progress once the player is gone", async () => {
+    vi.useFakeTimers();
+    let cancelled = false;
+    vi.stubGlobal("fetch", (_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal!.addEventListener("abort", () => { cancelled = true; reject(init.signal!.reason); });
+    }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = liveFeed();
+    f.connected = true;
+    const gone = new AbortController();
+    void keepLoadingRecording(f, "m1", gone.signal);
+    gone.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cancelled).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 

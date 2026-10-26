@@ -33,7 +33,7 @@ TICK_EVERY_S = 1.0  # one coalesced Web PubSub message per match per second
 MAX_FRAMES_PER_TICK = 15
 MAX_INFLIGHT_PUBLISHES = 64  # live ticks are ephemeral: drop them rather than slow the stream down
 PUBLISH_TIMEOUT_S = 3.0
-MAX_INFLIGHT_RECORDINGS = 64  # same rule for recordings: a slow append must not hold up the batch loop
+MAX_INFLIGHT_RECORDINGS = 64  # past this, ticks go unrecorded (and counted) rather than hold up the batch loop
 RECORD_TIMEOUT_S = 5.0
 
 
@@ -287,12 +287,12 @@ class InterpreterService:
             if self.dropped_ticks % 100 == 1:
                 log.warning("Web PubSub is slow: dropped %d live ticks so far", self.dropped_ticks)
             return
+        self.inflight += 1
         task = asyncio.create_task(self._publish(group, payload))
         self.bg.add(task)
         task.add_done_callback(self.bg.discard)
 
     async def _publish(self, group: str, payload: dict) -> None:
-        self.inflight += 1
         try:
             await asyncio.wait_for(self.wps.send_to_group(group, payload, content_type="application/json"),
                                    timeout=PUBLISH_TIMEOUT_S)  # the SDK serializes dicts

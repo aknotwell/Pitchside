@@ -286,15 +286,15 @@ class RecordingCache:
     """Each match's recording, gzipped, so a burst of joiners costs one download and one compression.
 
     The blob only grows, so a copy at least as long as the blob was when a request arrived holds
-    everything that request could have seen. Copies older than a few seconds are rebuilt anyway."""
+    everything that request could have seen."""
 
     class Entry:
         def __init__(self):
             self.lock = asyncio.Lock()
-            self.size, self.at, self.body = -1, 0.0, b""
+            self.size, self.body = -1, b""
 
-    def __init__(self, ttl_s: float = 5.0, max_matches: int = 16):
-        self.ttl_s, self.max_matches = ttl_s, max_matches
+    def __init__(self, max_matches: int = 16):
+        self.max_matches = max_matches
         self.entries: OrderedDict[str, RecordingCache.Entry] = OrderedDict()
 
     async def get(self, match_id: str, size: int, download) -> bytes:
@@ -303,10 +303,10 @@ class RecordingCache:
         while len(self.entries) > self.max_matches:
             self.entries.popitem(last=False)
         async with e.lock:  # concurrent requests wait for the first one's copy instead of making their own
-            if e.size < size or time.monotonic() - e.at > self.ttl_s:
+            if e.size < size:
                 data = await download(size)
                 e.body = await asyncio.to_thread(gzip.compress, data, 1)  # level 6 is ~30% smaller and ~4x slower
-                e.size, e.at = len(data), time.monotonic()
+                e.size = len(data)
             return e.body
 
 
