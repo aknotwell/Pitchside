@@ -29,7 +29,7 @@ resource stream 'Microsoft.EventHub/namespaces/eventhubs@2024-01-01' = {
   }
 }
 
-resource cgs 'Microsoft.EventHub/namespaces/eventhubs/consumergroups@2024-01-01' = [for n in [ 'interpreter', 'fabric', 'archive' ]: {
+resource cgs 'Microsoft.EventHub/namespaces/eventhubs/consumergroups@2024-01-01' = [for n in [ 'interpreter', 'interpreter-rebuild', 'fabric', 'archive' ]: {
   parent: stream
   name: n
 }]
