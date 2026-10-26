@@ -31,8 +31,9 @@ interface LiveFeed extends Feed {
   paceHint: number;
   byId: Map<string, Cue>;
   /** Recording loads asked for (one on joining, one more each time the socket comes back after a
-   *  drop), and how many of those the last successful load covered. */
-  recording: { wanted: number; loaded: number };
+   *  drop), how many of those the last successful load covered, and the bytes of the recording
+   *  loaded so far: later loads ask only for what follows. */
+  recording: { wanted: number; loaded: number; size: number };
 }
 
 const byT = (f: Frame) => f.t_s;
@@ -42,7 +43,7 @@ const wallNow = () => performance.now() / 1000;
 export function liveFeed(): LiveFeed {
   const f: LiveFeed = {
     connected: false, frames: [], states: [], meta: null, clock: null, heard: [], paceHint: 1, byId: new Map(), late: [],
-    recording: { wanted: 1, loaded: 0 },
+    recording: { wanted: 1, loaded: 0, size: 0 },
     get cues() { return f.byId.values(); },
     shows: () => true,
     timeline: (now) => timelineAt(f, now),
@@ -91,13 +92,17 @@ export function recordedPace(ticks: Tick[]): { pace: number; newest: number } | 
   return { pace: pace(b.t - a.t, wallS), newest: b.t };
 }
 
-/** Everything broadcast before this viewer joined, and whether there was any. The tail also gives a first estimate of the simulator's
- *  pace from the ticks' server clocks, sparing the socket estimate a slow warm-up. */
+/** Everything broadcast before this viewer joined, or since the last load, and whether it loaded. The
+ *  tail also gives a first estimate of the simulator's pace from the ticks' server clocks, sparing the
+ *  socket estimate a slow warm-up. */
 async function loadRecording(f: LiveFeed, matchId: string, signal: AbortSignal): Promise<boolean> {
   try {
-    const r = await fetch(`${API}/api/matches/${matchId}/recording`, { signal });
+    const from = f.recording.size;
+    const r = await fetch(`${API}/api/matches/${matchId}/recording${from ? `?from=${from}` : ""}`, { signal });
     if (!r.ok) throw new Error(`${r.status}`);
     const ticks: Tick[] = (await r.text()).split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    if (!from && !ticks.length) return false;  // created before its first tick: try again
+    f.recording.size = Number(r.headers.get("X-Recording-Size")) || 0;
     const frames = ticks.flatMap((t) => t.frames ?? []).sort((a, b) => a.t_s - b.t_s);
     f.frames = mergeByTime(f.frames, frames, byT);
     f.states = mergeByTime(f.states, ticks.flatMap((t) => (t.state ? [t.state] : [])).sort((a, b) => a.clockS - b.clockS), byClock);
@@ -107,7 +112,7 @@ async function loadRecording(f: LiveFeed, matchId: string, signal: AbortSignal):
       if (!f.clock) f.clock = { matchT: recorded.newest, wall: wallNow(), speed: f.paceHint };
       else if (f.heard.length < 2 || f.clock.wall - f.heard[0].wall < 3) f.clock = { ...f.clock, speed: f.paceHint };
     }
-    return ticks.length > 0;  // an empty one was created before its first tick: try again
+    return true;
   } catch (e) {
     if (!signal.aborted) console.warn("recording load failed", e);
     return false;
@@ -119,8 +124,8 @@ const RECORDING_RETRY_S = [2, 5, 10, 20];
 const sleep = (s: number) => new Promise((resolve) => setTimeout(resolve, s * 1000));
 
 /** Loads the recording once the socket is open (whatever airs while it downloads then arrives on the
- *  socket), and again after each reconnect, since ticks sent while the socket was down only exist in
- *  the recording. Retries with back-off while the match is live, until `signal` aborts, which also
+ *  socket), and what was recorded since after each reconnect, since ticks sent while the socket was
+ *  down only exist in the recording. Retries with back-off while the match is live, until `signal` aborts, which also
  *  cancels a download in progress. */
 export async function keepLoadingRecording(f: LiveFeed, matchId: string, signal: AbortSignal) {
   for (let failures = 0; !signal.aborted;) {

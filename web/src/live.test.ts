@@ -86,32 +86,56 @@ describe("keepLoadingRecording", () => {
     expect(asked).toHaveLength(1);
   });
 
-  it("loads it again after the socket comes back from a drop, and stops once the match has ended", async () => {
+  /** The recording endpoint over `recorded`: the whole of it, or with `from` only the bytes after that
+   *  offset (204 when there are none). Every reply says the size it covers. Returns the URLs asked for. */
+  function serve(recorded: () => Tick[]) {
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      asked.push(url);
+      const all = new TextEncoder().encode(recorded().map((x) => JSON.stringify(x) + "\n").join(""));
+      const from = Number(new URL(url, "http://api").searchParams.get("from") ?? 0);
+      const headers = { "X-Recording-Size": String(all.length) };
+      return from === all.length ? new Response(null, { status: 204, headers }) : new Response(all.slice(from), { headers });
+    });
+    return asked;
+  }
+
+  it("after a drop asks only for what was recorded since, and stops once the match has ended", async () => {
     vi.useFakeTimers();
     let recorded = ticks(3, 1, 1);
-    const asked: number[] = [];
-    const t0 = Date.now();
-    vi.stubGlobal("fetch", async () => {
-      asked.push((Date.now() - t0) / 1000);
-      return new Response(recorded.map((x) => JSON.stringify(x)).join("\n"));
-    });
+    const asked = serve(() => recorded);
     const f = liveFeed();
     f.connected = true;
     const done = keepLoadingRecording(f, "m1", new AbortController().signal);
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(asked).toEqual([0]);
+    expect(asked).toEqual(["/api/matches/m1/recording"]);
 
+    const before = new TextEncoder().encode(recorded.map((x) => JSON.stringify(x) + "\n").join("")).length;
     recorded = ticks(8, 1, 1);  // aired while the socket was down
     f.recording.wanted++;
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(asked).toHaveLength(2);
-    expect(f.frames.at(-1)?.t_s).toBe(7);
+    expect(asked[1]).toBe(`/api/matches/m1/recording?from=${before}`);
+    expect(f.frames.map((x) => x.t_s)).toEqual(ticks(8, 1, 1).flatMap((t) => t.frames!.map((x) => x.t_s)));
 
     recorded = [...recorded, { type: "tick", frames: [frame(8)], state: { clockS: 8, ended: true } as Tick["state"] }];
     f.recording.wanted++;
     await vi.advanceTimersByTimeAsync(1_000);
     await done;
     expect(asked).toHaveLength(3);
+    expect(f.frames.at(-1)?.t_s).toBe(8);
+  });
+
+  it("takes nothing new since the last load as loaded, not as a failure to retry", async () => {
+    vi.useFakeTimers();
+    const asked = serve(() => ticks(3, 1, 1));
+    const f = liveFeed();
+    f.connected = true;
+    void keepLoadingRecording(f, "m1", new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(1_000);
+    f.recording.wanted++;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(asked).toHaveLength(2);
+    expect(f.recording.loaded).toBe(f.recording.wanted);
   });
 
   it("stops once the player is gone", async () => {

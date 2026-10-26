@@ -49,6 +49,7 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
           allowedOrigins: corsOrigins
           allowedMethods: [ 'GET', 'POST', 'OPTIONS' ]
           allowedHeaders: [ '*' ]
+          exposeHeaders: [ 'X-Recording-Size' ]
           maxAge: 3600
         }
       }

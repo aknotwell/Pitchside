@@ -136,6 +136,42 @@ def test_recording_is_served_gzipped_and_never_cached(client):
         assert gzip.decompress(b"".join(raw.iter_raw())) == FIRST
 
 
+def test_recording_says_how_many_bytes_it_covers_even_when_a_longer_copy_is_cached(client):
+    assert client.get("/api/matches/m00042-abc/recording").headers["x-recording-size"] == str(len(FIRST))
+    longer = FIRST + b'{"type":"tick","frames":[{"t_s":1.0}]}\n'
+    app.state.blobs.files[KEY] = longer
+    client.get("/api/matches/m00042-abc/recording")
+    app.state.blobs.files[KEY] = FIRST  # a request whose HEAD ran before the append the cache has seen
+    r = client.get("/api/matches/m00042-abc/recording")
+    assert r.content == longer and r.headers["x-recording-size"] == str(len(longer))
+
+
+def test_a_reconnecting_viewer_gets_only_what_was_appended_since_their_offset(client):
+    tail = b'{"type":"tick","frames":[{"t_s":1.0}]}\n{"type":"tick","frames":[{"t_s":2.0}]}\n'
+    app.state.blobs.files[KEY] = FIRST + tail
+    with client.stream("GET", f"/api/matches/m00042-abc/recording?from={len(FIRST)}") as raw:
+        assert gzip.decompress(b"".join(raw.iter_raw())) == tail
+        assert raw.headers["x-recording-size"] == str(len(FIRST + tail))
+        assert raw.headers["cache-control"] == "no-store"
+
+
+def test_a_viewer_already_at_the_end_gets_no_content(client):
+    r = client.get(f"/api/matches/m00042-abc/recording?from={len(FIRST)}")
+    assert r.status_code == 204 and r.content == b"" and r.headers["x-recording-size"] == str(len(FIRST))
+
+
+def test_an_offset_past_the_end_or_not_an_offset_is_rejected(client):
+    assert client.get(f"/api/matches/m00042-abc/recording?from={len(FIRST) + 1}").status_code == 400
+    assert client.get("/api/matches/m00042-abc/recording?from=-1").status_code == 422
+    assert client.get("/api/matches/m00042-abc/recording?from=abc").status_code == 422
+
+
+def test_an_offset_into_a_missing_or_empty_recording_is_still_a_404(client):
+    assert client.get("/api/matches/nope/recording?from=0").status_code == 404
+    app.state.blobs.files[KEY] = b""
+    assert client.get("/api/matches/m00042-abc/recording?from=0").status_code == 404
+
+
 def test_recording_404s_for_a_match_without_one_and_rejects_bad_ids(client):
     assert client.get("/api/matches/nope/recording").status_code == 404
     assert client.get("/api/matches/bad.id/recording").status_code == 400
@@ -203,7 +239,11 @@ async def test_a_recording_bigger_than_one_get_downloads_while_ticks_keep_landin
             app.state.blobs = blobs
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://api") as c:
                 r = await c.get("/api/matches/m00042-abc/recording")
+                since = len(blob["data"]) - int(r.headers["x-recording-size"])
+                tail = await c.get(f"/api/matches/m00042-abc/recording?from={r.headers['x-recording-size']}")
     assert r.status_code == 200 and r.content == FIRST * 4
+    assert since == 4 * len(tick) and tail.content == tick * 4  # ticks that landed during the first read
+    assert tail.headers["x-recording-size"] == str(len(FIRST * 4 + tick * 4))
 
 
 class FakeCues:
