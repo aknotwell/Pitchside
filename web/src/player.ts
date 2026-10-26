@@ -47,11 +47,15 @@ export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live
   const tr = useRef<Transport>({ anchor: { wall: 0, t0: 0, speed: initialSpeed }, paused: false, followLive: live });
   const tl = useRef<Timeline | null>(null);
   const jumped = useRef(true);  // the next frame crosses no cues
+  const draw = useRef(() => {});
   const [controls] = useState<Controls>(() => {
     const run = (f: (t: Transport, now: number, l: Timeline) => Transport, jump = false) => {
       if (!tl.current) return;
       tr.current = f(tr.current, wallNow(), tl.current);
       if (jump) jumped.current = true;
+      // Render now, inside the input's event: React then restores the seek bar to the new playhead,
+      // not the last frame's, which the change event that follows a key press would seek back to
+      draw.current();
     };
     return {
       togglePause: () => run(togglePause),
@@ -85,8 +89,10 @@ export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live
     let raf = 0;
     const tick = () => {
       raf = requestAnimationFrame(tick);
+      if (performance.now() - last >= 66) draw.current();  // ~15 fps is plenty for a 5 Hz feed
+    };
+    draw.current = () => {
       const nowMs = performance.now();
-      if (nowMs - last < 66) return;  // ~15 fps is plenty for a 5 Hz feed
       if (nowMs - last > 1000) jumped.current = true;  // back from a hidden tab: don't pop everything missed
       if (!tr.current.paused && last) cueClock += (nowMs - last) / 1000;
       last = nowMs;
@@ -124,7 +130,7 @@ export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live
       });
     };
     raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); sampler.current = () => null; tl.current = null; };
+    return () => { cancelAnimationFrame(raf); sampler.current = () => null; draw.current = () => {}; tl.current = null; };
   }, [key, live]);
 
   return view;
