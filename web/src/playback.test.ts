@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayClock, playheadAt, rebase, type ReplayEvent, scoreboardAt } from "./playback";
+import { displayClock, playheadAt, rebase, type ReplayEvent, scoreboardAt, snapshotAt } from "./playback";
 
 const ev = (clock_s: number, type: string, extra: Partial<ReplayEvent> = {}): ReplayEvent =>
   ({ clock_s, type, team_id: null, outcome: null, period: 1, ...extra });
@@ -76,5 +76,20 @@ describe("playhead and speed changes", () => {
     const b = rebase(a, 10, 1);
     expect(playheadAt(b, 10)).toBe(playheadAt(a, 10));  // no jump at the moment of the change
     expect(playheadAt(b, 12)).toBe(42);  // then 1× from 40 s
+  });
+});
+
+describe("snapshotAt", () => {
+  const snaps = [0, 5, 10, 15].map((clockS) => ({ clockS, shots: clockS / 5 }));
+  it("returns the latest snapshot at or before the playhead", () => {
+    expect(snapshotAt(snaps, 0)?.clockS).toBe(0);
+    expect(snapshotAt(snaps, 7.5)?.clockS).toBe(5);
+    expect(snapshotAt(snaps, 10)?.clockS).toBe(10);
+    expect(snapshotAt(snaps, 999)?.clockS).toBe(15);
+  });
+  it("is null before the first snapshot or for replays packaged without them", () => {
+    expect(snapshotAt(snaps.slice(1), 2)).toBeNull();
+    expect(snapshotAt(undefined, 50)).toBeNull();
+    expect(snapshotAt([], 50)).toBeNull();
   });
 });
