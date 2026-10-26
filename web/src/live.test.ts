@@ -20,13 +20,15 @@ describe("recordedPace", () => {
     expect(recordedPace(ticks(30, 3))?.pace).toBe(3);
   });
 
-  it("orders ticks that were appended out of order", () => {
-    expect(recordedPace(ticks(30, 3, 1.5).reverse())).toEqual({ pace: 2, newest: 87 });
+  it("skips a tick whose append landed after a later one's", () => {
+    const ts = ticks(30, 3, 1.5);
+    [ts[25], ts[26]] = [ts[26], ts[25]];
+    expect(recordedPace(ts)).toEqual({ pace: 2, newest: 87 });
   });
 
-  it("ignores ticks recorded again after an interpreter restart", () => {
+  it("ignores ticks recorded again after an interpreter restart, however they were split", () => {
     const first = ticks(30, 3, 1.5);
-    const replayed = first.slice(-3).map((t) => ({ ...t, wallMs: t.wallMs! + 60_000 }));
+    const replayed = first.slice(-6).flatMap((t) => [2, 1].map((back) => ({ ...t, frames: [frame(t.frames![1].t_s - back)], wallMs: t.wallMs! + 60_000 })));
     expect(recordedPace([...first, ...replayed])).toEqual({ pace: 2, newest: 87 });
   });
 
