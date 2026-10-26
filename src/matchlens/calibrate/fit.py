@@ -105,7 +105,7 @@ def match_stats(args: tuple[dict, int, float]) -> dict:
 
     eng = Logged(seed, params={**params, "period_min": period_min})
     eng.live_frames = 0
-    ts, _, pl, ids = eng.simulate_tracking()
+    ts, _, pl, _, ids = eng.simulate_tracking()
     ev = eng.events
     # SkillCorner counts player possessions ending in a pass: restart deliveries (throw-ins, goal kicks,
     # corners, free kicks, kick-offs) are not player possessions, so they are left out here too.

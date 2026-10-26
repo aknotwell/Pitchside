@@ -3,15 +3,26 @@ import { API } from "./api";
 import type { Live } from "./live";
 import { type Anchor, playheadAt as advance, rebase, scoreboardAt } from "./playback";
 import { sampleFrames } from "./sample";
-import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona, TeamSummary } from "./types";
+import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona, RestartKind, TeamSummary } from "./types";
+
+/** [t, ball x, ball y, players, ball height, restart]; replays packaged before a field was added omit it. */
+export type PackedFrame = [number, number, number, ([number, number] | null)[], number?, ([RestartKind, "h" | "a"] | null)?];
 
 interface ReplayPackage {
   matchId: string;
   meta: MatchMeta;
   playerIds: string[];
-  frames: [number, number, number, ([number, number] | null)[], number?][];
+  frames: PackedFrame[];
   events: { event_id: string; clock_s: number; display_clock: string; type: string; team_id: string | null; outcome: string | null; period: number }[];
   cues: Cue[];
+}
+
+export function unpackFrames(playerIds: string[], frames: PackedFrame[]): Frame[] {
+  return frames.map(([t, bx, by, pl, bz, rs]) => ({
+    t_s: t, ball: [bx, by, bz ?? 0],
+    players: playerIds.flatMap((id, j) => (pl[j] ? [{ id, x: pl[j]![0], y: pl[j]![1] }] : [])),
+    restart: rs ? { kind: rs[0], team: rs[1] } : null,
+  }));
 }
 
 function team(meta: MatchMeta, side: "home" | "away", goals: number): TeamSummary {
@@ -58,10 +69,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
     fetch(`${API}/api/replays/${matchId}`).then((r) => r.json()).then((p: ReplayPackage) => {
       if (stopped) return;
       pkg.current = p;
-      frames.current = p.frames.map(([t, bx, by, pl, bz]) => ({
-        t_s: t, ball: [bx, by, bz ?? 0] as [number, number, number],
-        players: p.playerIds.flatMap((id, j) => (pl[j] ? [{ id, x: pl[j]![0], y: pl[j]![1] }] : [])),
-      }));
+      frames.current = unpackFrames(p.playerIds, p.frames);
       start.current = { wall: vt(performance.now() / 1000), t0: p.frames[0]?.[0] ?? 0, speed: start.current.speed };
       setLive((l) => ({ ...l, connected: true }));
     }).catch((e) => console.warn("replay load failed", e));

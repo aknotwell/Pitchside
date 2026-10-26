@@ -6,6 +6,7 @@ import { Overlay } from "./components/Overlay";
 import { Pitch } from "./components/Pitch";
 import { Ask } from "./components/Ask";
 import { Producer } from "./components/Producer";
+import { RestartLabel } from "./components/RestartLabel";
 import { Scoreboard } from "./components/Scoreboard";
 import { Squads } from "./components/Squads";
 import { Stats } from "./components/Stats";
@@ -163,6 +164,7 @@ function Main({ params }: { params: URLSearchParams }) {
               </select>
             )}
           </div>
+          <RestartLabel restart={live.frame?.restart} meta={live.state?.meta} />
           <Overlay cues={live.cues} onWhy={setWhy} />
         </section>
         <aside className="side">

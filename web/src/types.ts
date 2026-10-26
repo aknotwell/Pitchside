@@ -8,7 +8,10 @@ export const PERSONAS: { id: Persona; label: string; hint: string }[] = [
 export type Lang = "en" | "es" | "ja";
 
 export interface PlayerPos { id: string; x: number; y: number }
-export interface Frame { t_s: number; ball: [number, number, number]; players: PlayerPos[] }
+export type RestartKind = "kickoff" | "throw_in" | "goal_kick" | "corner" | "free_kick" | "penalty";
+/** The restart the ball is dead for, and the side taking it. Absent in old replays and while play is live. */
+export interface Restart { kind: RestartKind; team: "h" | "a" }
+export interface Frame { t_s: number; ball: [number, number, number]; players: PlayerPos[]; restart?: Restart | null }
 
 export interface Evidence {
   key: string; label: string; value: number | string; unit?: string;
