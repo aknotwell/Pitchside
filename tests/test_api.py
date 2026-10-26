@@ -35,7 +35,7 @@ class FakeBlobClient:
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(blob_aio, "BlobClient", FakeBlobClient)
-    api.app.state.cred = None
+    monkeypatch.setattr(api.app.state, "cred", None, raising=False)
     return TestClient(api.app)  # no `with`: the lifespan would connect to Azure
 
 
