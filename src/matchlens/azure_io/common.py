@@ -124,6 +124,7 @@ def async_openai(project_endpoint: str, credential):
     from openai import AsyncAzureOpenAI
 
     u = urlsplit(project_endpoint)
-    return AsyncAzureOpenAI(azure_endpoint=f"{u.scheme}://{u.netloc}/", api_version="2025-04-01-preview",
+    # No SDK retries: Reflex passes to the agent instead of waiting out a 429 or a timeout.
+    return AsyncAzureOpenAI(azure_endpoint=f"{u.scheme}://{u.netloc}/", api_version="2025-04-01-preview", max_retries=0,
                             azure_ad_token_provider=get_bearer_token_provider(
                                 credential, "https://cognitiveservices.azure.com/.default"))

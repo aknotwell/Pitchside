@@ -12,8 +12,10 @@ from matchlens.reflex.ask import (
     brief,
     choices,
     decide,
-    grounded,
+    fill,
+    name_problems,
     render,
+    slots,
 )
 from matchlens.reflex.probe import LETTERS, Choice, Probe, build_prompt
 
@@ -98,18 +100,37 @@ def test_every_template_renders_from_the_state(lang):
 
 
 def test_template_passes_when_the_data_is_not_there_yet():
-    early = {**STATE, "topSpeeds": [], "window10": None}
+    """The shape state_doc() writes at kickoff: zero top speeds, no PPDA, a 10-minute window
+    that is not full yet."""
+    early = {**STATE, "clockS": 40.0, "home": {**STATE["home"], "ppda": None}, "away": {**STATE["away"], "ppda": None},
+             "topSpeeds": [{**sp, "kmh": 0.0, "mps": 0.0} for sp in STATE["topSpeeds"]]}
     by_id = {c.id: c for c in CAPABILITIES}
-    assert render(by_id["fastest"], early, "en") is None
-    assert render(by_id["recent"], early, "en") is None
+    for cap in ("fastest", "recent", "pressing"):
+        assert render(by_id[cap], early, "en") is None, cap
+    assert "fastest1.kmh" not in slots(early) and "home.ppda" not in slots(early)
 
 
-def test_grounding_rejects_invented_numbers_and_unlisted_players():
+def test_recent_names_the_side_on_top_in_the_window_it_prints():
+    text = render(next(c for c in CAPABILITIES if c.id == "recent"), STATE, "en")
+    assert text == "Last 10 minutes: xG Copperfield 0.63, Ironvale Athletic 0.01. On top in that spell: Copperfield."
+
+
+def test_tier1_numbers_come_only_from_slots():
+    values = slots(STATE)
+    text, problems = fill("{home.name} won {home.goals}-{away.goals} on xG {home.xg}.", values, "en")
+    assert problems == ["unknown slot home.name"]
+    text, problems = fill("Copperfield won {home.goals}-{away.goals} with {home.possessionPct}% of the ball.", values, "en")
+    assert (text, problems) == ("Copperfield won 1-0 with 47% of the ball.", [])
+    assert fill("xG {home.xg}", values, "es")[0] == "xG 1,75"
+    for invented in ("Copperfield won 2-0.", "They had three more shots.", "シュートは三本多かった。", "xG {home.xg} vs 1.13"):
+        assert fill(invented, values, "en")[1], invented
+
+
+def test_tier1_rejects_unlisted_players_and_betting():
     b = brief(STATE)
-    assert grounded("Copperfield won 1-0 with xG 1.75 against 1.13 and 47% of the ball.", b, STATE) == []
-    assert grounded("Copperfield had 23 shots.", b, STATE) == ["number 23"]
-    assert grounded("Kenji Kowal kept Copperfield in it.", b, STATE) == ["names Kenji Kowal"]
-    assert grounded("Dario Lindqvist hit 36.4 km/h.", b, STATE) == []
+    assert name_problems("Dario Lindqvist was quickest.", b, STATE) == []  # Gael Lindqvist shares the surname
+    assert name_problems("Kowalが素晴らしいセーブを見せた。", b, STATE) == ["names Kenji Kowal"]
+    assert name_problems("A safe bet.", b, STATE) == ["betting word bet"]
 
 
 async def test_tier0_answer_is_written_by_code():
@@ -128,10 +149,19 @@ async def test_betting_is_declined_in_the_viewers_language():
 
 async def test_tier1_answer_that_invents_a_number_goes_to_the_agent():
     picks = {"capability": "overview", "fit:overview": "yes", "betting": "no"}
-    ok = await Reflex(FakeModel(picks, narration="Copperfield edged it: xG 1.75 to 1.13.")).answer("why?", "en", state)
-    assert ok.tier == 1 and ok.text
+    ok = await Reflex(FakeModel(picks, narration="Copperfield edged it: xG {home.xg} to {away.xg}.")).answer("why?", "en", state)
+    assert (ok.tier, ok.text) == (1, "Copperfield edged it: xG 1.75 to 1.13.")
     bad = await Reflex(FakeModel(picks, narration="Copperfield had 31 shots.")).answer("why?", "en", state)
-    assert bad.text is None and bad.decision.reason == "ungrounded" and bad.problems == ["number 31"]
+    assert bad.text is None and bad.decision.reason == "ungrounded" and bad.problems == ["wrote a number: 31"]
+
+
+async def test_a_crash_inside_reflex_is_a_pass():
+    async def broken():
+        return {**STATE, "possessionHome": "n/a"}  # a field of the wrong type
+
+    model = FakeModel({"capability": "score", "fit:score": "yes"})
+    res = await Reflex(model).answer("score?", "en", broken)
+    assert res.text is None and res.decision.reason == "crashed:TypeError"
 
 
 async def test_any_failure_is_a_pass():

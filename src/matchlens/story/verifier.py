@@ -60,7 +60,7 @@ def allowed_numbers(moment: Moment) -> list[float]:
     return nums
 
 
-def number_allowed(n: float, allowed: list[float]) -> bool:
+def _matches(n: float, allowed: list[float]) -> bool:
     for a in allowed:
         tol = max(0.051, abs(a) * 0.02)
         if abs(n - a) <= tol or abs(n - round(a)) < 1e-9 or abs(n - round(a, 1)) < 1e-9:
@@ -93,7 +93,7 @@ def verify(expl: Explanation, moment: Moment, required: list[tuple[str, str]], r
                 problems.append(f"{tag} cites unknown evidence key '{k}'")
         for raw in NUM_RE.findall(body):
             n = float(raw.replace(",", "."))
-            if not number_allowed(n, allowed):
+            if not _matches(n, allowed):
                 problems.append(f"{tag} number {raw} is not in the evidence pack")
         for name in forbidden_names:
             last = name.split()[-1]

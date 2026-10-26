@@ -29,7 +29,7 @@ export function Ask({ matchId, lang }: { matchId: string | null; lang: Lang }) {
   return (
     <div className="ask">
       <h3>Ask the match</h3>
-      <p className="muted">Reflex answers the common questions in about a second: a batched classifier routes the question and code writes the numbers. Everything else goes to an Agent Framework agent on the MatchLens MCP server, which starts at the same time.</p>
+      <p className="muted">Reflex answers the common questions in about a second: a batched classifier routes the question and code writes the numbers. Everything else goes to an Agent Framework agent on the MatchLens MCP server.</p>
       <form onSubmit={(e) => { e.preventDefault(); void send(q); }} className="row">
         <input value={q} onChange={(e) => setQ(e.target.value)} maxLength={300} placeholder="Ask about this match…" aria-label="Question" />
         <button disabled={busy || !matchId}>{busy ? "…" : "Ask"}</button>

@@ -66,6 +66,7 @@ async def lifespan(app: FastAPI):
     app.state.reflex = Reflex(async_openai(s.foundry_project_endpoint, app.state.cred),
                               os.environ.get("REFLEX_DEPLOYMENT", "gpt-4.1-mini"))
     yield
+    await app.state.reflex.client.close()
     await app.state.http.close()
     await app.state.cosmos.close()
     await app.state.cred.close()
@@ -202,10 +203,13 @@ async def get_asker(request: Request):
     return request.app.state.ask
 
 
+AGENT_HEAD_START_S = 2.5  # covers most probes and Tier 1 calls; a slower Reflex races the agent
+
+
 @app.post("/api/ask")
 async def ask(request: Request):
-    """Ask the match. Reflex and the MCP agent start together; a Reflex answer cancels the agent,
-    and a Reflex pass costs nothing because the agent is already running."""
+    """Ask the match. Reflex answers first when it can. The MCP agent starts when Reflex passes, or
+    after a short head start, and is cancelled when Reflex answers; the first useful answer wins."""
     if not asks.check(client_key(request)) or not global_asks.check("all"):
         raise HTTPException(429, "question limit reached, try again in a minute")
     body = await request.json()
@@ -226,20 +230,35 @@ async def ask(request: Request):
         except CosmosResourceNotFoundError:
             return None
 
-    agent = asyncio.create_task(run_agent())
-    agent.add_done_callback(lambda t: t.cancelled() or t.exception())  # a cancelled or failed race leg is not an error
-    reflex = await request.app.state.reflex.answer(question, lang, read_state)
-    if reflex.text:
-        agent.cancel()
-        return {"answer": reflex.text, "tools": [], "model": "reflex" if reflex.tier == 0 else request.app.state.reflex.deployment,
-                "reflex": reflex.telemetry()}
+    reflex = request.app.state.reflex
+    reflex_task = asyncio.create_task(reflex.answer(question, lang, read_state))
+    agent_task: asyncio.Task | None = None
     try:
-        return {**await agent, "reflex": reflex.telemetry()}
-    except TimeoutError as exc:
-        raise HTTPException(504, "the agent took too long") from exc
-    except Exception as exc:
-        log.warning("ask failed: %s", exc)
-        raise HTTPException(502, "the agent is unavailable right now") from exc
+        await asyncio.wait({reflex_task}, timeout=AGENT_HEAD_START_S)
+        while True:
+            if reflex_task.done():
+                r = reflex_task.result()
+                if r.text:
+                    return {"answer": r.text, "tools": [], "model": "reflex" if r.tier == 0 else reflex.deployment,
+                            "reflex": r.telemetry()}
+            if agent_task is None:
+                agent_task = asyncio.create_task(run_agent())
+            pending = {agent_task} | ({reflex_task} if not reflex_task.done() else set())
+            done, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            if agent_task in done:
+                break
+        telemetry = reflex_task.result().telemetry() if reflex_task.done() else {"outcome": "pass", "reason": "agent_first"}
+        try:
+            return {**agent_task.result(), "reflex": telemetry}
+        except TimeoutError as exc:
+            raise HTTPException(504, "the agent took too long") from exc
+        except Exception as exc:
+            log.warning("ask failed: %s", exc)
+            raise HTTPException(502, "the agent is unavailable right now") from exc
+    finally:
+        for t in (reflex_task, agent_task):
+            if t is not None and not t.done():
+                t.cancel()
 
 
 AUDIO_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}/[A-Za-z0-9_.-]{1,120}\.mp3$")

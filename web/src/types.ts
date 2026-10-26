@@ -52,7 +52,9 @@ export interface Reflex {
   tier: 0 | 1 | null;
   confidence: number;
   reason: string;
-  ms: number;
+  probeMs?: number;
+  ms?: number;
+  problems?: string[] | null;
 }
 
 export interface AskAnswer { answer: string; tools: string[]; model: string; reflex?: Reflex }

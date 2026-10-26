@@ -83,7 +83,7 @@ async def main() -> None:
     for i, it in enumerate(items):
         if args.show or (it["ok"] and labels[0][i] == "pass"):
             r = first[i]
-            print(f"  {labels[0][i]:>10} {r.decision.reason:<18} {r.decision.confidence:.2f} {it['q']!r} -> {r.text or ''}"[:220])
+            print(f"  {labels[0][i]:>10} {r.decision.reason:<18} {r.decision.confidence:.2f} {it['q']!r} -> {r.text or r.problems or ''}"[:220])
 
 
 if __name__ == "__main__":
