@@ -46,7 +46,6 @@ const wallNow = () => performance.now() / 1000;
 export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live: boolean, initialSpeed: number): Live {
   const tr = useRef<Transport>({ anchor: { wall: 0, t0: 0, speed: initialSpeed }, paused: false, followLive: live });
   const tl = useRef<Timeline | null>(null);
-  const started = useRef(false);
   const jumped = useRef(true);  // the next frame crosses no cues
   const [controls] = useState<Controls>(() => {
     const run = (f: (t: Transport, now: number, l: Timeline) => Transport, jump = false) => {
@@ -71,23 +70,16 @@ export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live
     if (!key) return;
     tr.current = { anchor: { wall: 0, t0: 0, speed: tr.current.anchor.speed }, paused: false, followLive: live };
     tl.current = null;
-    started.current = false;
+    let started = false;
     jumped.current = true;
     const shownAt = new Map<string, number>();
     let prev: number | null = null;
     let cueClock = 0;  // wall seconds of playback: cue lifetimes stand still while paused
     let last = 0;
 
-    const position = (now: number) => {
-      const f = feed.current, l = f?.timeline(now) ?? null;
-      tl.current = l;
-      if (!f || !l) return null;
-      if (!started.current) { tr.current = { ...tr.current, anchor: { wall: now, t0: l.start, speed: tr.current.anchor.speed } }; started.current = true; }
-      return positionAt(tr.current, now, l);
-    };
-    sampler.current = () => {
-      const t = position(wallNow());
-      return t === null ? null : sampleFrames(feed.current!.frames, t);
+    sampler.current = () => {  // runs at the renderer's frame rate, so it only reads
+      const now = wallNow(), f = feed.current, l = f?.timeline(now);
+      return f && l && started ? sampleFrames(f.frames, positionAt(tr.current, now, l)) : null;
     };
 
     let raf = 0;
@@ -101,13 +93,15 @@ export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live
       const now = nowMs / 1000;
       const f = feed.current;
       if (!f) return;
-      if (tl.current) tr.current = settle(tr.current, now, tl.current);
-      const playhead = position(now);
-      const l = tl.current;
-      if (playhead === null || !l) {
+      const l = f.timeline(now);
+      tl.current = l;
+      if (!l) {
         setView({ ...empty, connected: f.connected, state: f.stateAt(Infinity) });
         return;
       }
+      if (!started) { tr.current = { ...tr.current, anchor: { wall: now, t0: l.start, speed: tr.current.anchor.speed } }; started = true; }
+      tr.current = settle(tr.current, now, l);
+      const playhead = positionAt(tr.current, now, l);
       const t = tr.current;
       if (jumped.current) { prev = null; jumped.current = false; shownAt.clear(); }  // what was up belongs to the moment left behind
       for (const c of crossed(f.cues, prev, playhead)) shownAt.set(c.id, cueClock);
