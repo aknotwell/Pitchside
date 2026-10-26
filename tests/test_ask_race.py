@@ -86,3 +86,8 @@ async def test_an_agent_that_finishes_first_wins_and_cancels_reflex():
 async def test_agent_failures_after_a_pass_map_to_http_errors(error, status):
     r = await ask(StubReflex(), StubAgent(error=error))
     assert r.status_code == status
+
+
+async def test_a_failed_agent_waits_for_a_reflex_answer_still_on_its_way():
+    r = await ask(StubReflex("1-0", delay=0.4), StubAgent(error=RuntimeError("mcp down")))
+    assert r.status_code == 200 and r.json()["answer"] == "1-0"

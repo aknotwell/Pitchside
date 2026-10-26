@@ -245,8 +245,10 @@ async def ask(request: Request):
                 agent_task = asyncio.create_task(run_agent())
             pending = {agent_task} | ({reflex_task} if not reflex_task.done() else set())
             done, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-            if agent_task in done:
+            if agent_task in done and (agent_task.exception() is None or reflex_task.done()):
                 break
+            if agent_task in done:  # the agent failed; a Reflex answer still on its way can rescue the turn
+                await asyncio.wait({reflex_task})
         telemetry = reflex_task.result().telemetry() if reflex_task.done() else {"outcome": "pass", "reason": "agent_first"}
         try:
             return {**agent_task.result(), "reflex": telemetry}
