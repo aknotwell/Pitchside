@@ -3,6 +3,7 @@ import { API, api } from "./api";
 import type { Timeline } from "./playback";
 import { type Feed, type Live, usePlayer } from "./player";
 import { lastAtOrBefore, mergeByTime } from "./sample";
+import { keepConnected } from "./socket";
 import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona } from "./types";
 
 /** Broadcast delay in wall-clock seconds: the player shows the match this far behind live, so
@@ -29,6 +30,9 @@ interface LiveFeed extends Feed {
   /** Pace read from the recording, used until the socket has been heard long enough to measure it. */
   paceHint: number;
   byId: Map<string, Cue>;
+  /** Recording loads asked for (one on joining, one more each time the socket comes back after a
+   *  drop), and how many of those the last successful load covered. */
+  recording: { wanted: number; loaded: number };
 }
 
 const byT = (f: Frame) => f.t_s;
@@ -38,6 +42,7 @@ const wallNow = () => performance.now() / 1000;
 export function liveFeed(): LiveFeed {
   const f: LiveFeed = {
     connected: false, frames: [], states: [], meta: null, clock: null, heard: [], paceHint: 1, byId: new Map(), late: [],
+    recording: { wanted: 1, loaded: 0 },
     get cues() { return f.byId.values(); },
     shows: () => true,
     timeline: (now) => timelineAt(f, now),
@@ -114,52 +119,66 @@ const RECORDING_RETRY_S = [2, 5, 10, 20];
 const sleep = (s: number) => new Promise((resolve) => setTimeout(resolve, s * 1000));
 
 /** Loads the recording once the socket is open (whatever airs while it downloads then arrives on the
- *  socket), retrying with back-off while the match is live, until it loads or `signal` aborts, which
- *  also cancels a download in progress. */
+ *  socket), and again after each reconnect, since ticks sent while the socket was down only exist in
+ *  the recording. Retries with back-off while the match is live, until `signal` aborts, which also
+ *  cancels a download in progress. */
 export async function keepLoadingRecording(f: LiveFeed, matchId: string, signal: AbortSignal) {
   for (let failures = 0; !signal.aborted;) {
-    if (!f.connected) { await sleep(0.2); continue; }
-    if (await loadRecording(f, matchId, signal) || f.states[f.states.length - 1]?.ended) return;
-    await sleep(RECORDING_RETRY_S[Math.min(failures++, RECORDING_RETRY_S.length - 1)]);
+    const wanted = f.recording.wanted;
+    if (!f.connected || f.recording.loaded === wanted) { await sleep(0.2); continue; }
+    const loaded = await loadRecording(f, matchId, signal);
+    if (f.states[f.states.length - 1]?.ended) return;
+    if (loaded) { f.recording.loaded = wanted; failures = 0; }
+    else await sleep(RECORDING_RETRY_S[Math.min(failures++, RECORDING_RETRY_S.length - 1)]);
   }
 }
 
-/** One viewer's live connection: their cue history, then the socket. Returns its stop. Nothing from a
- *  stopped connection (a late history fetch, a closing socket's last messages) reaches the feed, which
- *  by then belongs to the viewer or language picked next. */
+function onMessage(f: LiveFeed, data: unknown) {
+  try {
+    let msg = JSON.parse(typeof data === "string" ? data : "");
+    if (typeof msg === "string") msg = JSON.parse(msg); // tolerate double-encoded payloads
+    if (msg.type === "tick") {
+      onFrames(f, (msg.frames ?? []) as Frame[]);
+      if (msg.state) f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
+    } else if (msg.type === "frames") onFrames(f, msg.frames as Frame[]);
+    else if (msg.type === "state") f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
+    else if (msg.type === "cue") { f.byId.set(msg.cue.id, msg.cue as Cue); f.late.push(msg.cue as Cue); }
+  } catch { /* ignore non-JSON */ }
+}
+
+/** One viewer's live connection: their cue history, then a socket kept open across drops. Returns its
+ *  stop. Nothing from a stopped connection (a late history fetch, a closing socket's last messages)
+ *  reaches the feed, which by then belongs to the viewer or language picked next. */
 export function connect(f: LiveFeed, matchId: string, persona: Persona, lang: Lang): () => void {
-  let ws: WebSocket | null = null;
   let stopped = false;
+  let stopSocket: (() => void) | null = null;
+  let opens = 0;
   f.byId = new Map();
   f.late = [];
+  const cues = () => api.cues(matchId, persona, lang, CUE_HISTORY);
   (async () => {
-    try {
-      const hist = await api.cues(matchId, persona, lang, CUE_HISTORY).catch(() => ({ cues: [] as Cue[] }));
-      if (stopped) return;
-      for (const c of hist.cues) f.byId.set(c.id, c);
-      const { url } = await api.negotiate(matchId, persona, lang);
-      if (stopped) return;
-      ws = new WebSocket(url);
-      ws.onopen = () => { if (!stopped) f.connected = true; };
-      ws.onclose = () => { if (!stopped) f.connected = false; };
-      ws.onmessage = (ev) => {
+    const hist = await cues().catch(() => ({ cues: [] as Cue[] }));
+    if (stopped) return;
+    for (const c of hist.cues) f.byId.set(c.id, c);
+    stopSocket = keepConnected({
+      negotiate: () => api.negotiate(matchId, persona, lang),
+      cues,
+      open: (url) => new WebSocket(url),
+    }, {
+      onMessage: (data) => { if (!stopped) onMessage(f, data); },
+      // Cues that aired while the socket was down or opening: late, like one the socket brings after its moment
+      onCues: (missed) => {
         if (stopped) return;
-        try {
-          let msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
-          if (typeof msg === "string") msg = JSON.parse(msg); // tolerate double-encoded payloads
-          if (msg.type === "tick") {
-            onFrames(f, (msg.frames ?? []) as Frame[]);
-            if (msg.state) f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
-          } else if (msg.type === "frames") onFrames(f, msg.frames as Frame[]);
-          else if (msg.type === "state") f.states = mergeByTime(f.states, [msg.state as MatchState], byClock);
-          else if (msg.type === "cue") { f.byId.set(msg.cue.id, msg.cue as Cue); f.late.push(msg.cue as Cue); }
-        } catch { /* ignore non-JSON */ }
-      };
-    } catch (e) {
-      console.warn("live connect failed", e);
-    }
+        for (const c of missed) if (!f.byId.has(c.id)) { f.byId.set(c.id, c); f.late.push(c); }
+      },
+      onConnected: (up) => {
+        if (stopped) return;
+        f.connected = up;
+        if (up && opens++ > 0) f.recording.wanted++;
+      },
+    });
   })();
-  return () => { stopped = true; ws?.close(); f.connected = false; };
+  return () => { stopped = true; stopSocket?.(); f.connected = false; };
 }
 
 export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lang): Live {

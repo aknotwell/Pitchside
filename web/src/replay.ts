@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { API } from "./api";
-import { scoreboardAt, type Timeline } from "./playback";
+import { scoreboardAt, snapshotAt, type Timeline } from "./playback";
 import { type Feed, type Live, usePlayer } from "./player";
 import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona, RestartKind, TeamSummary } from "./types";
 
@@ -14,6 +14,8 @@ interface ReplayPackage {
   frames: PackedFrame[];
   events: { event_id: string; clock_s: number; display_clock: string; type: string; team_id: string | null; outcome: string | null; period: number }[];
   cues: Cue[];
+  /** The interpreter's state every 5 s of match clock; replays packaged before it was added omit it. */
+  states?: Omit<MatchState, "id" | "meta">[];
 }
 
 export function unpackFrames(playerIds: string[], frames: PackedFrame[]): Frame[] {
@@ -53,8 +55,10 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
         shows: (c) => (c.persona === view.current.persona || c.persona === "all") && (c.lang === view.current.lang || c.lang === "all"),
         stateAt: (t) => {
           const { home: h, away: aw, period, clock } = scoreboardAt(p.events, t, p.meta.period_min ?? 45);
+          // Stats follow the playhead; older packages without snapshots fall back to the full-time state.
           const fs = finalRef.current;
-          const base = fs && fs.id === p.matchId ? fs : null;
+          const snap = snapshotAt(p.states, t);
+          const base = p.states?.length ? (snap && { ...snap, id: p.matchId }) : fs && fs.id === p.matchId ? fs : null;
           return base
             ? { ...base, home: { ...base.home, goals: h }, away: { ...base.away, goals: aw }, displayClock: clock, period, meta: p.meta }
             : { id: p.matchId, clockS: t, displayClock: clock, period, ended: false, home: team(p.meta, "home", h), away: team(p.meta, "away", aw),

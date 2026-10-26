@@ -104,3 +104,14 @@ export function scoreboardAt(events: ReplayEvent[], playhead: number, periodMin:
   const clock = displayClock(Math.min(playhead, periodEnd ?? playhead), period, periodStart, periodMin);
   return { home, away, period, clock };
 }
+
+/** The latest of `snapshots` (sorted by clockS) at or before `playhead`, or null before the first. */
+export function snapshotAt<T extends { clockS: number }>(snapshots: T[] | undefined, playhead: number): T | null {
+  if (!snapshots?.length || snapshots[0].clockS > playhead) return null;
+  let lo = 0, hi = snapshots.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (snapshots[mid].clockS <= playhead) lo = mid; else hi = mid - 1;
+  }
+  return snapshots[lo];
+}

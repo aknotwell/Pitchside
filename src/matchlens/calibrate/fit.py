@@ -1,9 +1,16 @@
 """Fit simulator parameters to licensed open-data targets and write a realism report.
 
     uv run python -m matchlens.calibrate.fit [--rounds 3] [--seeds 12] [--workers 16]
+    uv run python -m matchlens.calibrate.fit --report-only [--test-seeds 64]
 
 Writes ``src/matchlens/sim/fitted_params.json`` (parameters + aggregate targets only) and
-``docs/REALISM.md``. The agent-based engine produces events and tracking together, so every
+``docs/REALISM.md``. ``--report-only`` fits nothing: it scores the committed parameters on the test
+split and rewrites only the test-set section of the report.
+
+Data hygiene: real targets are split by match and by player (``real.split``), and so are the
+simulated seeds. The search fits **train** targets on seeds 101+, picks the round with the lowest
+**validation** loss (seeds 501+, also the range to use when hand-tuning), and the report reads the
+**test** targets on seeds 901+ once, with bootstrap 95% intervals over the real matches or players. The agent-based engine produces events and tracking together, so every
 evaluation runs full matches (shortened periods, counts scaled to 90 minutes) in parallel.
 
 Two kinds of target:
@@ -27,7 +34,7 @@ from pathlib import Path
 
 import numpy as np
 
-from matchlens.calibrate.real import SOURCE, targets
+from matchlens.calibrate.real import SOURCE, event_ci, physical_ci, targets
 from matchlens.contracts import HALF_LENGTH
 from matchlens.sim.engine import MatchEngine
 from matchlens.sim.params import DEFAULT_PARAMS, load_params, params_version
@@ -36,6 +43,8 @@ FITTED = Path("src/matchlens/sim/fitted_params.json")
 REPORT = Path("docs/REALISM.md")
 SPRINT_MPS = 25.2 / 3.6  # SkillCorner sprint threshold
 PERIOD_MIN = 15.0
+FIT_SEED, VALIDATION_SEED, TEST_SEED = 101, 501, 901
+TEST_START, TEST_END = "<!-- test-split:start -->", "<!-- test-split:end -->"
 
 # Soft guard rails: (value, weight). Typical top-flight values per match, both teams.
 NORMS = {
@@ -112,8 +121,15 @@ def match_stats(args: tuple[dict, int, float]) -> dict:
     all_passes = [e for e in ev if e.type == "pass"]
     ps = [e for e in all_passes if not e.qualifiers.get("set_piece")]
     count = lambda kind: sum(1 for e in ev if e.type == kind)  # noqa: E731
+    # Team possessions, as SkillCorner counts them: a new one starts whenever the other side has the ball.
+    possessions, last_team = 0, None
+    for e in ev:
+        if e.type in ("pass", "carry", "shot") and e.team_id and e.team_id != last_team:
+            possessions, last_team = possessions + 1, e.team_id
     out = {
         "passes": len(ps), "completion": float(np.mean([e.outcome == "complete" for e in ps])) if ps else 0.0,
+        "team_possessions": possessions,
+        "xg_shots": [(float(e.qualifiers.get("xg", 0.0)), e.outcome == "goal") for e in ev if e.type == "shot"],
         "pass_lengths": [float(e.qualifiers["length_m"]) for e in ps],
         "shots": count("shot"), "headers": sum(1 for e in ev if e.type == "shot" and e.qualifiers.get("body_part") == "head"),
         "goals": sum(1 for e in ev if e.type == "shot" and e.outcome == "goal"),
@@ -162,7 +178,9 @@ def evaluate(params: dict, seeds: list[int], pool: ProcessPoolExecutor, period_m
         "clearances_per_match": m("clearances") * scale,
         "outside_box_shot_share": max(0.01, m("outside") / max(1e-9, m("shots"))),
         "pass_length_quantiles_m": deciles(pool_("pass_lengths")),
-        "_pass_lengths": pool_("pass_lengths"), "_psv99": pool_("psv"),
+        "team_possessions_per_match": m("team_possessions") * scale,
+        "passes_per_team_possession": m("passes") / max(1e-9, m("team_possessions")),
+        "_pass_lengths": pool_("pass_lengths"), "_psv99": pool_("psv"), "_xg_shots": pool_("xg_shots"),
     }
 
 
@@ -201,11 +219,14 @@ def set_(p: dict, knob: str, value: float) -> dict:
     return p
 
 
-def coordinate_search(params, evaluate_fn, tgt, rounds: int) -> tuple[dict, dict, float]:
+def coordinate_search(params, evaluate_fn, tgt, rounds: int, validate=None) -> tuple[dict, dict, float]:
+    """Coordinate descent on the training loss. With ``validate`` (params -> validation loss), the
+    result is the round (or the start) with the lowest validation loss, not the last round."""
     best = deepcopy(params)
     best_stats = evaluate_fn(best)
     best_loss = loss(best_stats, tgt)
     print(f"  start loss {best_loss:.4f}", flush=True)
+    chosen = (validate(best) if validate else 0.0, best, best_stats, best_loss)
     for r in range(rounds):
         for knob, (lo, hi) in KNOBS.items():
             cur = get(best, knob)
@@ -221,7 +242,82 @@ def coordinate_search(params, evaluate_fn, tgt, rounds: int) -> tuple[dict, dict
                     best, best_stats, best_loss = trial, st, lo_
                     print(f"  round {r} {knob}={cand:.4f} -> loss {lo_:.4f}", flush=True)
                     break
+        if validate:
+            v = validate(best)
+            print(f"  round {r}: train loss {best_loss:.4f}, validation loss {v:.4f}", flush=True)
+            if v < chosen[0]:
+                chosen = (v, deepcopy(best), best_stats, best_loss)
+    if validate:
+        return chosen[1], chosen[2], chosen[3]
     return best, best_stats, best_loss
+
+
+def xg_calibration(shots: list[tuple[float, bool]], edges=(0.0, 0.05, 0.1, 0.2, 0.35, 1.01)) -> list[dict]:
+    """Predicted (mean xG) against actual goal rate per xG bin, on held-out simulated shots."""
+    rows = []
+    for lo, hi in zip(edges, edges[1:], strict=False):
+        b = [(x, g) for x, g in shots if lo <= x < hi]
+        if b:
+            rows.append({"bin": f"{lo:.2f}–{min(hi, 1.0):.2f}", "shots": len(b),
+                         "xg": float(np.mean([x for x, _ in b])), "goals": float(np.mean([g for _, g in b]))})
+    return rows
+
+
+TEST_ROWS = [  # (label, key, format, which real data)
+    ("Passes per match", "passes_per_match", "{:.0f}", "events"),
+    ("Pass completion", "pass_completion", "{:.1%}", "events"),
+    ("Shots per match", "shots_per_match", "{:.1f}", "events"),
+    ("Mean pass length (m)", "pass_length_mean_m", "{:.1f}", "events"),
+    ("Team possessions per match (not fitted)", "team_possessions_per_match", "{:.0f}", "events"),
+    ("Passes per team possession (not fitted)", "passes_per_team_possession", "{:.2f}", "events"),
+    ("Distance per 90, median (km)", "distance_km_per90_median", "{:.2f}", "physical"),
+    ("Peak speed (PSV-99), median (km/h)", "psv99_kmh_median", "{:.1f}", "physical"),
+    ("Sprints per 90, median", "sprints_per90_median", "{:.1f}", "physical"),
+]
+
+
+def test_section(real: dict, sim: dict, version: str, n_seeds: int) -> list[str]:
+    """The reported numbers: test-split real data (with bootstrap 95% intervals) against test seeds."""
+    ev, ph = real["events"], real["physical"]
+    md = [TEST_START, "## Test set: real data and seeds never used for fitting or tuning", "",
+          f"Params `{version}` on {n_seeds} test-seed matches ({TEST_SEED}+), against the **test split** of the "
+          f"real data: {ev['matches']} matches and {ph['players']} players held out by a fixed seed "
+          "(`calibrate/real.py`). The interval is a bootstrap 95% interval over those real matches or players. "
+          "With so few real matches it is wide: it shows how uncertain the real target itself is.", "",
+          "| Metric | Real (test split) | 95% interval | Simulated | Inside? |", "|---|---|---|---|---|"]
+    for label, key, fmt, kind in TEST_ROWS:
+        lo, hi = event_ci(ev["_per_match"], key) if kind == "events" else physical_ci(ph["_players"], key)
+        val, got = (ev if kind == "events" else ph)[key], sim[key]
+        md.append(f"| {label} | {fmt.format(val)} | {fmt.format(lo)}–{fmt.format(hi)} | **{fmt.format(got)}** | "
+                  f"{'yes' if lo <= got <= hi else 'no'} |")
+    md += ["", "| Distribution (test split) | KS statistic |", "|---|---|",
+           f"| Pass length | {ks(sim['_pass_lengths'], ev['_pass_lengths']):.3f} |",
+           f"| Player peak speed | {ks(sim['_psv99'], ph['_psv99']):.3f} |", "",
+           "Possession counts are reported, not fitted, and the definitions are close but not identical: ours "
+           "starts a team possession whenever the other side touches the ball (including one-touch losses), "
+           "SkillCorner's follows its own phase rules. Treat them as approximate.", "",
+           "With only 4 real test matches the bootstrap interval for a match-level metric is itself rough; "
+           "\"no\" means the simulator sits outside the spread of those 4 matches, not a significance test.", "",
+           "**xG calibration** (simulated test-seed shots): mean predicted xG against the share that were goals. "
+           "This checks that the engine's finishing agrees with its own xG model. It is not a check against real "
+           "shot outcomes, which the open data doesn't include.", "",
+           "| xG bin | Shots | Mean xG | Goal rate |", "|---|---|---|---|"]
+    for b in xg_calibration(sim["_xg_shots"]):
+        md.append(f"| {b['bin']} | {b['shots']} | {b['xg']:.3f} | {b['goals']:.3f} |")
+    md += ["", TEST_END]
+    return md
+
+
+def write_test_section(lines: list[str]) -> None:
+    text = REPORT.read_text() if REPORT.exists() else ""
+    block = "\n".join(lines)
+    if TEST_START in text and TEST_END in text:
+        text = text[:text.index(TEST_START)] + block + text[text.index(TEST_END) + len(TEST_END):]
+    else:
+        marker = "\n## Against typical match values"
+        i = text.find(marker)
+        text = (text[:i] + "\n" + block + "\n" + text[i:]) if i >= 0 else text.rstrip() + "\n\n" + block + "\n"
+    REPORT.write_text(text)
 
 
 def ks(a: list[float], b: list[float]) -> float:
@@ -237,24 +333,44 @@ def main() -> None:
     ap.add_argument("--seeds", type=int, default=12)
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--warm", action="store_true", help="start from the current fitted parameters")
+    ap.add_argument("--report-only", action="store_true",
+                    help="score the committed parameters on the test split and update only that report section")
+    ap.add_argument("--test-seeds", type=int, default=64)
     a = ap.parse_args()
     t0 = time.time()
     print("loading targets from", SOURCE, flush=True)
-    real = targets()
-    ev_t, ph_t = real["events"], real["physical"]
-    tgt = {**{k: ev_t[k] for k in ("passes_per_match", "pass_completion", "shots_per_match", "pass_length_mean_m",
-                                   "pass_length_quantiles_m")},
-           **{k: ph_t[k] for k in ("distance_km_per90_median", "psv99_kmh_median", "sprints_per90_median")}}
+    train, val, test = targets("train"), targets("validation"), targets("test")
+    test_seeds = list(range(TEST_SEED, TEST_SEED + a.test_seeds))
 
-    fit_seeds = list(range(101, 101 + a.seeds))
-    hold_seeds = list(range(901, 901 + a.seeds))
+    if a.report_only:
+        params = load_params()
+        with ProcessPoolExecutor(a.workers) as pool:
+            print(f"scoring on {len(test_seeds)} test seeds…", flush=True)
+            sim = evaluate(params, test_seeds, pool)
+        write_test_section(test_section(test, sim, params_version(params), len(test_seeds)))
+        print(f"updated the test-set section of {REPORT} in {time.time() - t0:.0f} s")
+        return
+
+    def target_of(real: dict) -> dict:
+        ev, ph = real["events"], real["physical"]
+        return {**{k: ev[k] for k in ("passes_per_match", "pass_completion", "shots_per_match", "pass_length_mean_m",
+                                      "pass_length_quantiles_m")},
+                **{k: ph[k] for k in ("distance_km_per90_median", "psv99_kmh_median", "sprints_per90_median")}}
+
+    tgt, val_tgt = target_of(train), target_of(val)
+    fit_seeds = list(range(FIT_SEED, FIT_SEED + a.seeds))
+    val_seeds = list(range(VALIDATION_SEED, VALIDATION_SEED + a.seeds))
     with ProcessPoolExecutor(a.workers) as pool:
         print("fitting…", flush=True)
         start = load_params() if a.warm else deepcopy(DEFAULT_PARAMS)
-        params, _, _ = coordinate_search(start, lambda p: evaluate(p, fit_seeds, pool), tgt, a.rounds)
-        print("validating on held-out seeds…", flush=True)
-        after = evaluate(params, hold_seeds, pool)
-        before = evaluate(deepcopy(DEFAULT_PARAMS), hold_seeds, pool)
+        params, _, _ = coordinate_search(start, lambda p: evaluate(p, fit_seeds, pool), tgt, a.rounds,
+                                         validate=lambda p: loss(evaluate(p, val_seeds, pool), val_tgt))
+        print("scoring once on the test split…", flush=True)
+        after = evaluate(params, test_seeds, pool)
+        before = evaluate(deepcopy(DEFAULT_PARAMS), test_seeds, pool)
+    # Everything below reports against the test split; fitted_params.json records the train targets.
+    ev_t, ph_t = test["events"], test["physical"]
+    tgt = target_of(test)
     params["version"] = "fit-skillcorner-agents"
     version = params_version(params)
 
@@ -264,8 +380,9 @@ def main() -> None:
 
     FITTED.write_text(json.dumps({
         "params_version": version, "fitted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "source": SOURCE, "targets": {"events": agg(ev_t), "physical": agg(ph_t)},
-        "norms": {k: v for k, (v, _) in NORMS.items()}, "held_out": agg(after),
+        "source": SOURCE, "split": "train",
+        "targets": {"events": agg(train["events"]), "physical": agg(train["physical"])},
+        "norms": {k: v for k, (v, _) in NORMS.items()}, "test": agg(after),
         "params": {k: v for k, v in params.items() if k not in ("script",)},
     }, indent=1) + "\n")
 
@@ -306,13 +423,16 @@ def main() -> None:
         f"{len(KNOBS)} engine parameters by coordinate search, minimising weighted squared relative error on averages "
         "and squared error on the deciles of pass length. Each "
         f"evaluation runs {a.seeds} matches with {PERIOD_MIN:.0f}-minute halves (counts scaled to 90 minutes). "
-        "Numbers below are on **held-out seeds** that were never used in fitting.", "",
+        "The real data is split by match and by player into train, validation and test; the fit uses train "
+        f"targets on seeds {FIT_SEED}+, keeps the round with the lowest validation loss (seeds {VALIDATION_SEED}+), "
+        f"and the numbers below are on the **test split** and seeds {TEST_SEED}+, read once.", "",
         "## Against SkillCorner", "",
         "| Metric | Real | Hand-set (before) | Calibrated (after) | Error after |", "|---|---|---|---|---|",
     ]
     for name, k, fmt in sc_rows:
         md.append(f"| {name} | {fmt.format(tgt[k])} | {fmt.format(before[k])} | **{fmt.format(after[k])}** | "
                   f"{err(tgt[k], after[k])} |")
+    md += ["", *test_section(test, after, version, len(test_seeds))]
     md += ["", "## Against typical match values (guard rails, not SkillCorner)", "",
            "| Metric | Typical | Hand-set (before) | Calibrated (after) |", "|---|---|---|---|"]
     for name, k, fmt in norm_rows:

@@ -51,9 +51,8 @@ describe("keepLoadingRecording", () => {
     const asked = recordingAt(30);
     const f = liveFeed();
     f.connected = true;
-    const done = keepLoadingRecording(f, "m1", new AbortController().signal);
+    void keepLoadingRecording(f, "m1", new AbortController().signal);
     await vi.advanceTimersByTimeAsync(60_000);
-    await done;
     expect(asked).toEqual([0, 2, 7, 17, 37]);
     expect(f.frames.map((x) => x.t_s)).toEqual([-0.2, 0, 0.8, 1, 1.8, 2]);
   });
@@ -69,9 +68,8 @@ describe("keepLoadingRecording", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const f = liveFeed();
     f.connected = true;
-    const done = keepLoadingRecording(f, "m1", new AbortController().signal);
+    void keepLoadingRecording(f, "m1", new AbortController().signal);
     await vi.advanceTimersByTimeAsync(60_000);
-    await done;
     expect(asked).toEqual([0, 2, 7]);
     expect(f.frames[0].t_s).toBe(-0.2);
   });
@@ -86,6 +84,34 @@ describe("keepLoadingRecording", () => {
     f.connected = true;
     await vi.advanceTimersByTimeAsync(1_000);
     expect(asked).toHaveLength(1);
+  });
+
+  it("loads it again after the socket comes back from a drop, and stops once the match has ended", async () => {
+    vi.useFakeTimers();
+    let recorded = ticks(3, 1, 1);
+    const asked: number[] = [];
+    const t0 = Date.now();
+    vi.stubGlobal("fetch", async () => {
+      asked.push((Date.now() - t0) / 1000);
+      return new Response(recorded.map((x) => JSON.stringify(x)).join("\n"));
+    });
+    const f = liveFeed();
+    f.connected = true;
+    const done = keepLoadingRecording(f, "m1", new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(asked).toEqual([0]);
+
+    recorded = ticks(8, 1, 1);  // aired while the socket was down
+    f.recording.wanted++;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(asked).toHaveLength(2);
+    expect(f.frames.at(-1)?.t_s).toBe(7);
+
+    recorded = [...recorded, { type: "tick", frames: [frame(8)], state: { clockS: 8, ended: true } as Tick["state"] }];
+    f.recording.wanted++;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await done;
+    expect(asked).toHaveLength(3);
   });
 
   it("stops once the player is gone", async () => {
@@ -147,6 +173,34 @@ describe("connect", () => {
     await settle();
     expect([...f.byId.keys()]).toEqual(["analyst-1"]);
     expect(FakeSocket.all).toHaveLength(1);
+  });
+
+  it("after a drop it reconnects, merges the cues it missed as late ones, and asks for the recording again", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("WebSocket", FakeSocket);
+    vi.mocked(api.cues).mockResolvedValueOnce({ cues: [cue("before")] }).mockResolvedValueOnce({ cues: [cue("before")] })
+      .mockResolvedValue({ cues: [cue("before"), cue("missed")] });
+    vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = liveFeed();
+    connect(f, "m1", "casual", "en");
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0].onopen?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.connected).toBe(true);
+    expect(f.recording.wanted).toBe(1);
+
+    FakeSocket.all[0].onclose?.();
+    expect(f.connected).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(FakeSocket.all).toHaveLength(2);
+    FakeSocket.all[1].onopen?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.connected).toBe(true);
+    expect([...f.byId.keys()]).toEqual(["before", "missed"]);
+    expect(f.late.map((c) => c.id)).toEqual(["missed"]);
+    expect(f.recording.wanted).toBe(2);
+    vi.useRealTimers();
   });
 
   it("a closed socket's last messages and close don't touch the next one's feed", async () => {

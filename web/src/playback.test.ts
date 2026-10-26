@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   atBarEnd, crossed, displayClock, goLive, nearestSpeed, pause, play, playheadAt, positionAt, rebase, type ReplayEvent, scoreboardAt, seek, setSpeed,
-  settle, speedOf, type Timeline, togglePause, type Transport,
+  settle, snapshotAt, speedOf, type Timeline, togglePause, type Transport,
 } from "./playback";
 
 const ev = (clock_s: number, type: string, extra: Partial<ReplayEvent> = {}): ReplayEvent =>
@@ -184,5 +184,20 @@ describe("crossed", () => {
   it("airs nothing skipped by a jump or passed again going backwards", () => {
     expect(crossed(cues, null, 35)).toEqual([]);
     expect(crossed(cues, 35, 5)).toEqual([]);
+  });
+});
+
+describe("snapshotAt", () => {
+  const snaps = [0, 5, 10, 15].map((clockS) => ({ clockS, shots: clockS / 5 }));
+  it("returns the latest snapshot at or before the playhead", () => {
+    expect(snapshotAt(snaps, 0)?.clockS).toBe(0);
+    expect(snapshotAt(snaps, 7.5)?.clockS).toBe(5);
+    expect(snapshotAt(snaps, 10)?.clockS).toBe(10);
+    expect(snapshotAt(snaps, 999)?.clockS).toBe(15);
+  });
+  it("is null before the first snapshot or for replays packaged without them", () => {
+    expect(snapshotAt(snaps.slice(1), 2)).toBeNull();
+    expect(snapshotAt(undefined, 50)).toBeNull();
+    expect(snapshotAt([], 50)).toBeNull();
   });
 });

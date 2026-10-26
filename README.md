@@ -19,9 +19,12 @@ agent resumes exactly where it stopped.
    these numbers; a code verifier rejects anything else.
 4. Open **Producer** → **Start a match**. This launches a new Container Apps Job
    execution, which plays a live match.
-5. Open **Ask** and ask "Who has been the better team and why?" An Agent
-   Framework agent answers by calling the **MatchLens MCP server on Azure
-   Functions**, so every number comes from a tool.
+5. Open **Ask** and ask "Who is the fastest player?", then "Who scored the
+   goal?". **Reflex** answers the first in about a second. A batched logprob
+   classifier routes the question, and code writes the numbers. The second
+   goes to an Agent Framework agent on the **MatchLens MCP server on Azure
+   Functions**. Each answer shows which path
+   wrote it. See [`docs/REFLEX.md`](docs/REFLEX.md).
 6. Pick a **▶ Replay** in the match list. Finished matches are packaged by an
    **event-driven Container Apps Job** (Event Grid `FullTime` → Storage queue →
    KEDA). It re-simulates the match deterministically from its seed and
@@ -65,7 +68,7 @@ flowchart LR
 | Stage (rule 4.1) | What MatchLens does |
 |---|---|
 | **Ingest** | A seeded, agent-based simulator (ACA Job) plays a fictional match at 1–30× speed into Event Hubs. Players have roles and 1–99 traits and teams have tactical styles; pressure, tackles, interceptions and chances emerge from positions. Events (passes, carries, pressures, tackles, interceptions, shots with xG and shot speed, fouls, cards, subs) plus 10 Hz tracking of 22 players and the ball |
-| **Interpret** | Deterministic, idempotent metrics: xG, possession, pass accuracy, final-third entries, PPDA (match and rolling), momentum, a control-vs-chaos index, distance, top speed and sprints. A replay gives byte-identical state (tested) |
+| **Interpret** | Deterministic, idempotent metrics: xG, possession, pass accuracy, pass length, a pass difficulty rating (with a "pass of quality" tag on screen), shot speed, final-third entries, PPDA (match and rolling), momentum, a control-vs-chaos index, distance, top speed and sprints. A replay gives byte-identical state (tested) |
 | **Explain** | Detectors raise moments (goal, big chance, momentum swing, pressing surge, half time and full time) with an **evidence pack**. An Agent Framework workflow (Editor → Explainer → Personalizers → Verifier → Director) writes the *why* |
 | **Render** | Machine-readable `OverlayCue`s with `display_at_s`, TTL, priority and template, timed against a 10 s broadcast delay so agent latency is invisible. Shown on a live 2D pitch with lower-thirds, player speed tags and recap panels |
 | **Personalize** | Four registers (analyst, casual fan, academy coach, scout) in three languages (one non-Latin). One Personalizer agent per persona runs concurrently from a shared angle, and each persona is verified on its own. Recaps are also **voiced** in each language |
@@ -122,6 +125,7 @@ flowchart LR
 | Agents keep up | Agent-written, verified explanations: **p50 10.2 s**. The 10 s broadcast delay hides it. p95 58 s during scale-from-zero | same |
 | Survives a crash | Storyteller killed mid-workflow; ACA restarts it, the Service Bus session is reclaimed, and MAF resumes from the Cosmos checkpoint in **51 ms** without calling the model again | [`docs/PROGRESS.md`](docs/PROGRESS.md#checkpoint-3-deployed-to-azure-and-verified-end-to-end-2026-10-09) |
 | Grounded explanations | 4/4 sample moments passed the code verifier first time; injected bad numbers and names are rejected (tests) | `tests/test_storyteller.py` |
+| Fast, grounded Q&A | Reflex answers **88%** of answerable held-out questions (21/24), wrong on 1 of 22; Tier 0 p50 **1.2 s** vs 5–21 s on the agent path | [`docs/REFLEX.md`](docs/REFLEX.md) |
 | Realistic synthetic data | Agent-based engine calibrated to SkillCorner open data: passes/match **+3%**, pass completion **−4%**, shots **−2%**, distance/90 **+4%** (held-out seeds); goals, fouls and headers in normal ranges | [`docs/REALISM.md`](docs/REALISM.md) |
 
 ## Hero technologies
@@ -233,6 +237,7 @@ src/matchlens/
   sim/                deterministic event engine + 10 Hz tracking
   interpret/          incremental metrics, template cues, moment detectors
   story/              Agent Framework workflow, code verifier, localized templates
+  reflex/             Ask fast path: batched logprob probe, code-written answers
   services/           simulator · interpreter · storyteller · api entrypoints
 functions/cue_publisher/   Cosmos change feed → Web PubSub
 web/                  React overlay player, Why? drawer, producer console

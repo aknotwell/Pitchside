@@ -1,4 +1,4 @@
-import type { Cue, Lang, MatchState, MatchSummary, Persona } from "./types";
+import type { AskAnswer, Cue, Lang, MatchState, MatchSummary, Persona } from "./types";
 
 export const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
@@ -21,7 +21,7 @@ export const api = {
       body: JSON.stringify({ speed, periodMin }),
     }),
   ask: (matchId: string, question: string, lang: Lang) =>
-    j<{ answer: string; tools: string[]; model: string }>("/api/ask", {
+    j<AskAnswer>("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ matchId, question, lang }),
     }),

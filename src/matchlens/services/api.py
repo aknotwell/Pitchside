@@ -13,9 +13,9 @@ from contextlib import asynccontextmanager
 
 import aiohttp
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from matchlens.azure_io.common import async_credential, settings, setup_telemetry
+from matchlens.azure_io.common import async_credential, async_openai, settings, setup_telemetry
 from matchlens.contracts import (
     LANGUAGES,
     PERSONAS,
@@ -32,14 +32,17 @@ ARM = "https://management.azure.com"
 
 
 class RateLimiter:
-    """Per-client sliding window. Judges get generous limits; bots can't run up the bill."""
+    """Per-client sliding window, per replica. Judges get generous limits; bots can't run up the bill."""
 
     def __init__(self, limit: int, window_s: float):
         self.limit, self.window_s = limit, window_s
         self.hits: dict[str, deque[float]] = defaultdict(deque)
+        self.swept = time.monotonic()
 
     def check(self, key: str) -> bool:
         now = time.monotonic()
+        if now - self.swept >= self.window_s:
+            self._sweep(now)
         q = self.hits[key]
         while q and q[0] < now - self.window_s:
             q.popleft()
@@ -48,18 +51,87 @@ class RateLimiter:
         q.append(now)
         return True
 
+    def _sweep(self, now: float) -> None:
+        """Forget clients whose hits have all expired, so memory doesn't grow with every address."""
+        self.hits = defaultdict(deque, {k: q for k, q in self.hits.items() if q and q[-1] >= now - self.window_s})
+        self.swept = now
+
+
+class SharedBudget:
+    """A fixed-window counter in Cosmos (``runs``, partition ``_ops``), shared by every API replica.
+    Updates are etag-checked, so concurrent replicas can't both take the last unit."""
+
+    def __init__(self, name: str, limit: int, window_s: int):
+        self.name, self.limit, self.window_s = name, limit, window_s
+
+    async def take(self, container) -> bool:
+        from azure.core import MatchConditions
+        from azure.core.exceptions import (
+            HttpResponseError,
+            ResourceExistsError,
+            ResourceNotFoundError,
+        )
+
+        window = int(time.time()) // self.window_s
+        doc_id = f"budget-{self.name}-{window}"
+        for _ in range(5):
+            try:
+                doc = await container.read_item(doc_id, partition_key=OPS_PK)
+            except ResourceNotFoundError:
+                try:
+                    await container.create_item({"id": doc_id, "matchId": OPS_PK, "type": "budget", "count": 1,
+                                                 "ttl": 2 * self.window_s})
+                    return True
+                except ResourceExistsError:
+                    continue
+            if doc["count"] >= self.limit:
+                return False
+            try:
+                await container.replace_item(doc_id, {**doc, "count": doc["count"] + 1}, etag=doc["_etag"],
+                                             match_condition=MatchConditions.IfNotModified)
+                return True
+            except HttpResponseError as exc:
+                if exc.status_code != 412:  # 412: another replica updated it first
+                    raise
+                continue
+        return False  # heavy contention: err on the side of the budget
+
+
+class Cached:
+    """One shared answer for endpoints every viewer polls: at most one Cosmos query per TTL."""
+
+    def __init__(self, ttl_s: float):
+        self.ttl_s, self.at, self.value = ttl_s, float("-inf"), None
+        self.lock = asyncio.Lock()
+
+    async def get(self, load):
+        if time.monotonic() - self.at < self.ttl_s:
+            return self.value
+        async with self.lock:
+            if time.monotonic() - self.at >= self.ttl_s:  # another request may have refreshed it
+                self.value = await load()
+                self.at = time.monotonic()
+        return self.value
+
+    def clear(self) -> None:
+        self.at = float("-inf")
+
 
 reads = RateLimiter(240, 60)
 asks = RateLimiter(6, 60)
-global_asks = RateLimiter(300, 3600)  # token budget guard for the judging window
+global_asks = SharedBudget("asks", 300, 3600)  # token budget guard for the judging window
 starts = RateLimiter(3, 3600)
-global_starts = RateLimiter(12, 3600)
+global_starts = SharedBudget("starts", 12, 3600)
+LIST_TTL_S = 2.0
+LIST_CACHE = {"Cache-Control": f"public, max-age={int(LIST_TTL_S)}"}
+match_list, replay_list, ops_view = Cached(LIST_TTL_S), Cached(LIST_TTL_S), Cached(LIST_TTL_S)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from azure.cosmos.aio import CosmosClient
     from azure.messaging.webpubsubservice.aio import WebPubSubServiceClient
+    from azure.storage.blob.aio import BlobServiceClient
 
     setup_telemetry("api")
     s = settings()
@@ -68,10 +140,17 @@ async def lifespan(app: FastAPI):
     db = app.state.cosmos.get_database_client(s.cosmos_database)
     app.state.db = {n: db.get_container_client(n) for n in ("matchState", "cues", "moments", "runs")}
     app.state.wps = WebPubSubServiceClient(endpoint=s.webpubsub_endpoint, hub=s.webpubsub_hub, credential=app.state.cred)
+    app.state.blobs = BlobServiceClient(s.storage_blob_endpoint, credential=app.state.cred)
     app.state.http = aiohttp.ClientSession()
     app.state.ask = None
+    from matchlens.reflex.ask import Reflex
+
+    app.state.reflex = Reflex(async_openai(s.foundry_project_endpoint, app.state.cred),
+                              os.environ.get("REFLEX_DEPLOYMENT", "gpt-4.1-mini"))
     yield
+    await app.state.reflex.client.close()
     await app.state.http.close()
+    await app.state.blobs.close()
     await app.state.cosmos.close()
     await app.state.cred.close()
 
@@ -84,7 +163,12 @@ if os.environ.get("CORS_DEV"):
 
 
 def client_key(request: Request) -> str:
-    return request.headers.get("x-forwarded-for", request.client.host if request.client else "?").split(",")[0]
+    """The caller's address. Container Apps ingress *appends* the peer it saw to X-Forwarded-For,
+    so only the last entry is trustworthy; anything before it is whatever the client sent."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[-1].strip() or "?"
+    return request.client.host if request.client else "?"
 
 
 @app.middleware("http")
@@ -116,10 +200,11 @@ async def matches(request: Request):
     sql = ("SELECT c.id, c.displayClock, c.clockS, c.period, c.ended, c.home.name AS home, c.away.name AS away, "
            "c.home.goals AS homeGoals, c.away.goals AS awayGoals, c._ts AS updated FROM c "
            "WHERE c.type = 'matchState' ORDER BY c._ts DESC OFFSET 0 LIMIT 20")
-    items = []
-    async for it in request.app.state.db["matchState"].query_items(sql):
-        items.append(it)
-    return {"matches": items, "now": int(time.time())}
+
+    async def load():
+        return [it async for it in request.app.state.db["matchState"].query_items(sql)]
+    items = await match_list.get(load)
+    return JSONResponse({"matches": items, "now": int(time.time())}, headers=LIST_CACHE)
 
 
 @app.get("/api/matches/{match_id}")
@@ -167,7 +252,7 @@ async def arm_token(request: Request) -> str:
 async def start_match(request: Request):
     """Start one simulator job execution (= one live match)."""
     key = client_key(request)
-    if not starts.check(key) or not global_starts.check("all"):
+    if not starts.check(key) or not await global_starts.take(request.app.state.db["runs"]):
         raise HTTPException(429, "match start limit reached, try again later")
     body = await request.json() if request.headers.get("content-length") not in (None, "0") else {}
     speed = max(1.0, min(30.0, float(body.get("speed", 1))))
@@ -209,10 +294,14 @@ async def get_asker(request: Request):
     return request.app.state.ask
 
 
+AGENT_HEAD_START_S = 2.5  # covers most probes and Tier 1 calls; a slower Reflex races the agent
+
+
 @app.post("/api/ask")
 async def ask(request: Request):
-    """Ask the match: an Agent Framework agent answering through the match-data MCP server."""
-    if not asks.check(client_key(request)) or not global_asks.check("all"):
+    """Ask the match. Reflex answers first when it can. The MCP agent starts when Reflex passes, or
+    after a short head start, and is cancelled when Reflex answers; the first useful answer wins."""
+    if not asks.check(client_key(request)) or not await global_asks.take(request.app.state.db["runs"]):
         raise HTTPException(429, "question limit reached, try again in a minute")
     body = await request.json()
     question = str(body.get("question", "")).strip()
@@ -220,46 +309,85 @@ async def ask(request: Request):
     lang = body.get("lang", "en") if body.get("lang") in LANGUAGES else "en"
     if not question or not match_id or len(question) > 300:
         raise HTTPException(400, "matchId and a question (max 300 characters) are required")
+
+    async def run_agent():
+        return await (await get_asker(request)).ask(match_id, question, lang)
+
+    async def read_state():
+        from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
+        try:
+            return await request.app.state.db["matchState"].read_item(match_id, partition_key=match_id)
+        except CosmosResourceNotFoundError:
+            return None
+
+    reflex = request.app.state.reflex
+    reflex_task = asyncio.create_task(reflex.answer(question, lang, read_state))
+    agent_task: asyncio.Task | None = None
     try:
-        asker = await get_asker(request)
-        return await asker.ask(match_id, question, lang)
-    except TimeoutError as exc:
-        raise HTTPException(504, "the agent took too long") from exc
-    except Exception as exc:
-        log.warning("ask failed: %s", exc)
-        raise HTTPException(502, "the agent is unavailable right now") from exc
+        await asyncio.wait({reflex_task}, timeout=AGENT_HEAD_START_S)
+        while True:
+            if reflex_task.done():
+                r = reflex_task.result()
+                if r.text:
+                    return {"answer": r.text, "tools": [], "model": "reflex" if r.tier == 0 else reflex.deployment,
+                            "reflex": r.telemetry()}
+            if agent_task is None:
+                agent_task = asyncio.create_task(run_agent())
+            pending = {agent_task} | ({reflex_task} if not reflex_task.done() else set())
+            done, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            if agent_task in done and (agent_task.exception() is None or reflex_task.done()):
+                break
+            if agent_task in done:  # the agent failed; a Reflex answer still on its way can rescue the turn
+                await asyncio.wait({reflex_task})
+        telemetry = reflex_task.result().telemetry() if reflex_task.done() else {"outcome": "pass", "reason": "agent_first"}
+        try:
+            return {**agent_task.result(), "reflex": telemetry}
+        except TimeoutError as exc:
+            raise HTTPException(504, "the agent took too long") from exc
+        except Exception as exc:
+            log.warning("ask failed: %s", exc)
+            raise HTTPException(502, "the agent is unavailable right now") from exc
+    finally:
+        for t in (reflex_task, agent_task):
+            if t is not None and not t.done():
+                t.cancel()
 
 
 AUDIO_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}/[A-Za-z0-9_.-]{1,120}\.mp3$")
 
 
+async def stream_blob(request: Request, container: str, name: str, what: str, headers: dict) -> Response:
+    """Stream a private blob (read with the API's managed identity) chunk by chunk, so a replay
+    never sits whole in the API's memory. One shared client and connection pool."""
+    from azure.core.exceptions import ResourceNotFoundError
+
+    blob = request.app.state.blobs.get_blob_client(container, name)
+    try:
+        downloader = await blob.download_blob()
+    except ResourceNotFoundError as exc:
+        raise HTTPException(404, f"{what} not found") from exc
+    return StreamingResponse(downloader.chunks(), headers={"Content-Length": str(downloader.size), **headers})
+
+
 @app.get("/api/audio/{match_id}/{name}")
 async def audio(match_id: str, name: str, request: Request):
-    """Stream a voiced recap from private Blob storage (read with the API's managed identity)."""
-    from azure.storage.blob.aio import BlobClient
-    from fastapi.responses import Response
-
+    """Stream a voiced recap."""
     path = f"{match_id}/{name}"
     if not AUDIO_NAME.match(path):
         raise HTTPException(400, "bad audio name")
-    blob = BlobClient(settings().storage_blob_endpoint, "audio", path, credential=request.app.state.cred)
-    try:
-        async with blob:
-            data = await (await blob.download_blob()).readall()
-    except Exception as exc:
-        raise HTTPException(404, "audio not found") from exc
-    return Response(data, media_type="audio/mpeg", headers={"Cache-Control": "public, max-age=86400"})
+    return await stream_blob(request, "audio", path, "audio",
+                             {"Content-Type": "audio/mpeg", "Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/replays")
 async def replays(request: Request):
     """Finished matches packaged by the event-driven replay job."""
-    items = []
-    async for it in request.app.state.db["runs"].query_items(
+    async def load():
+        return [it async for it in request.app.state.db["runs"].query_items(
             "SELECT TOP 20 c.matchId, c.home, c.away, c.score, c.at, c.cues, c.frames FROM c "
-            "WHERE c.type = 'replay' ORDER BY c.at DESC"):
-        items.append(it)
-    return {"replays": items}
+            "WHERE c.type = 'replay' ORDER BY c.at DESC")]
+    return JSONResponse({"replays": await replay_list.get(load)}, headers=LIST_CACHE)
 
 
 MATCH_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
@@ -267,19 +395,11 @@ MATCH_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 @app.get("/api/replays/{match_id}")
 async def replay(match_id: str, request: Request):
-    from azure.storage.blob.aio import BlobClient
-    from fastapi.responses import Response
-
     if not MATCH_ID.fullmatch(match_id):
         raise HTTPException(400, "bad match id")
-    blob = BlobClient(settings().storage_blob_endpoint, "replays", f"{match_id}.json.gz", credential=request.app.state.cred)
-    try:
-        async with blob:
-            data = await (await blob.download_blob()).readall()
-    except Exception as exc:
-        raise HTTPException(404, "replay not found") from exc
-    return Response(data, media_type="application/json",
-                    headers={"Content-Encoding": "gzip", "Cache-Control": "public, max-age=3600"})
+    return await stream_blob(request, "replays", f"{match_id}.json.gz", "replay",
+                             {"Content-Type": "application/json", "Content-Encoding": "gzip",
+                              "Cache-Control": "public, max-age=3600"})
 
 
 class RecordingCache:
@@ -311,20 +431,17 @@ class RecordingCache:
 
 
 recording_cache = RecordingCache()
-RECORDING_RANGE = 32 * 1024 * 1024  # the SDK's default single GET
+RECORDING_RANGE = 32 * 1024 * 1024  # the shared client's max_single_get_size (the SDK default)
 
 
 @app.get("/api/matches/{match_id}/recording")
 async def recording(match_id: str, request: Request):
     """Every live tick broadcast so far (one JSON line each), so a late joiner can scrub back to kick-off."""
     from azure.core.exceptions import ResourceNotFoundError
-    from azure.storage.blob.aio import BlobClient
-    from fastapi.responses import Response
 
     if not MATCH_ID.fullmatch(match_id):
         raise HTTPException(400, "bad match id")
-    blob = BlobClient(settings().storage_blob_endpoint, RECORDINGS_CONTAINER, recording_blob(match_id),
-                      credential=request.app.state.cred, max_single_get_size=RECORDING_RANGE)
+    blob = request.app.state.blobs.get_blob_client(RECORDINGS_CONTAINER, recording_blob(match_id))
 
     async def download(size: int) -> bytes:
         """The first `size` bytes, one GET per range. One download_blob() of several ranges pins the later
@@ -334,11 +451,10 @@ async def recording(match_id: str, request: Request):
                          for o in range(0, size, RECORDING_RANGE)])
 
     try:
-        async with blob:
-            size = (await blob.get_blob_properties()).size
-            if not size:  # created, but its first tick not yet appended
-                raise ResourceNotFoundError("recording is empty")
-            body = await recording_cache.get(match_id, size, download)
+        size = (await blob.get_blob_properties()).size
+        if not size:  # created, but its first tick not yet appended
+            raise ResourceNotFoundError("recording is empty")
+        body = await recording_cache.get(match_id, size, download)
     except ResourceNotFoundError as exc:  # usual at kick-off: nothing has been appended yet
         raise HTTPException(404, "recording not found") from exc
     except Exception as exc:
@@ -354,22 +470,23 @@ async def chaos(request: Request):
         raise HTTPException(429, "chaos limit reached")
     doc = {"id": "chaos", "matchId": OPS_PK, "armed": True, "target": "storyteller", "armedAt": time.time()}
     await request.app.state.db["runs"].upsert_item(doc)
+    ops_view.clear()
     return doc
 
 
 @app.get("/api/ops")
 async def ops(request: Request):
     """Producer console: chaos state and the latest storyteller runs across matches."""
-    try:
-        chaos_doc = await request.app.state.db["runs"].read_item("chaos", partition_key=OPS_PK)
-    except Exception:
-        chaos_doc = {"armed": False}
-    runs = []
-    async for it in request.app.state.db["runs"].query_items(
+    async def load():
+        try:
+            chaos_doc = await request.app.state.db["runs"].read_item("chaos", partition_key=OPS_PK)
+        except Exception:
+            chaos_doc = {"armed": False}
+        runs = [it async for it in request.app.state.db["runs"].query_items(
             "SELECT TOP 20 c.moment_id, c.kind, c.source, c.ms, c.resumed_from, c.skipped, c.at, c.matchId FROM c "
-            "WHERE c.type = 'storyRun' ORDER BY c.at DESC"):
-        runs.append(it)
-    return {"chaos": {k: v for k, v in chaos_doc.items() if not k.startswith("_")}, "runs": runs}
+            "WHERE c.type = 'storyRun' ORDER BY c.at DESC")]
+        return {"chaos": {k: v for k, v in chaos_doc.items() if not k.startswith("_")}, "runs": runs}
+    return JSONResponse(await ops_view.get(load), headers=LIST_CACHE)
 
 
 def main() -> None:
