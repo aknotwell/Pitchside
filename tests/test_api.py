@@ -12,6 +12,7 @@ from matchlens.services import api
 
 KEY = ("replays", "live/m00042-abc.ndjson")
 FIRST = b'{"type":"tick","frames":[{"t_s":0.0}]}\n{"type":"tick","frames":[]}\n'
+REAL_BLOB_CLIENT = blob_aio.BlobClient
 
 
 class FakeBlobClient:
@@ -19,7 +20,7 @@ class FakeBlobClient:
     downloads = 0
     down = False
 
-    def __init__(self, endpoint, container, name, credential=None):
+    def __init__(self, endpoint, container, name, credential=None, **config):
         self.key = (container, name)
 
     async def __aenter__(self):
@@ -38,11 +39,11 @@ class FakeBlobClient:
         self._check()
         return SimpleNamespace(size=len(self.blobs[self.key]))
 
-    async def download_blob(self):
+    async def download_blob(self, offset=0, length=None):
         self._check()
         FakeBlobClient.downloads += 1
         await asyncio.sleep(0.05)  # long enough for a burst of joiners to overlap
-        data = self.blobs[self.key]
+        data = self.blobs[self.key][offset:None if length is None else offset + length]
 
         class Stream:
             async def readall(self):
@@ -94,6 +95,49 @@ async def test_a_burst_of_joiners_shares_one_download_and_new_ticks_are_never_mi
         FakeBlobClient.blobs[KEY] = FIRST + b'{"type":"tick","frames":[{"t_s":1.0}]}\n'
         later = await c.get("/api/matches/m00042-abc/recording")
         assert later.content == FakeBlobClient.blobs[KEY] and FakeBlobClient.downloads == 2
+
+
+async def test_a_recording_bigger_than_one_get_downloads_while_ticks_keep_landing(monkeypatch):
+    """The real SDK against a storage stub that appends a tick after every GET, as a live match does."""
+    import re
+    from functools import partial
+
+    from aiohttp import web
+    from aiohttp.test_utils import TestServer
+
+    tick = b'{"type":"tick","frames":[{"t_s":9.0}]}\n'
+    blob = {"data": FIRST * 4, "version": 0}
+
+    def headers(**extra):
+        return {"ETag": f'"0x{blob["version"]}"', "Last-Modified": "Sun, 25 Oct 2026 12:00:00 GMT",
+                "x-ms-blob-type": "AppendBlob", "x-ms-version": "2025-01-05", **extra}
+
+    async def storage(request: web.Request):
+        data = blob["data"]
+        if request.method == "HEAD":
+            return web.Response(headers=headers(**{"Content-Length": str(len(data))}))
+        if request.headers.get("If-Match", "*") not in ("*", headers()["ETag"]):
+            return web.Response(status=412, headers=headers(**{"x-ms-error-code": "ConditionNotMet"}))
+        start, end = map(int, re.fullmatch(r"bytes=(\d+)-(\d+)", request.headers["x-ms-range"]).groups())
+        end = min(end, len(data) - 1)
+        body = data[start:end + 1]
+        response = web.Response(status=206, body=body,
+                                headers=headers(**{"Content-Range": f"bytes {start}-{end}/{len(data)}"}))
+        blob["data"], blob["version"] = data + tick, blob["version"] + 1
+        return response
+
+    app = web.Application()
+    app.router.add_route("*", "/{path:.*}", storage)
+    async with TestServer(app) as server:
+        endpoint = str(server.make_url("/devstoreaccount1"))
+        monkeypatch.setattr(api, "settings", lambda: SimpleNamespace(storage_blob_endpoint=endpoint))
+        monkeypatch.setattr(api, "RECORDING_RANGE", len(FIRST))
+        # a recording several GETs long: the SDK's own ranges would be this small too
+        monkeypatch.setattr(blob_aio, "BlobClient", partial(REAL_BLOB_CLIENT, max_single_get_size=len(FIRST),
+                                                            max_chunk_get_size=len(FIRST)))
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api.app), base_url="http://api") as c:
+            r = await c.get("/api/matches/m00042-abc/recording")
+    assert r.status_code == 200 and r.content == FIRST * 4
 
 
 class FakeCues:

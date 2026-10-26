@@ -304,13 +304,14 @@ class RecordingCache:
             self.entries.popitem(last=False)
         async with e.lock:  # concurrent requests wait for the first one's copy instead of making their own
             if e.size < size or time.monotonic() - e.at > self.ttl_s:
-                data = await download()
+                data = await download(size)
                 e.body = await asyncio.to_thread(gzip.compress, data, 1)  # level 6 is ~30% smaller and ~4x slower
                 e.size, e.at = len(data), time.monotonic()
             return e.body
 
 
 recording_cache = RecordingCache()
+RECORDING_RANGE = 32 * 1024 * 1024  # the SDK's default single GET
 
 
 @app.get("/api/matches/{match_id}/recording")
@@ -323,10 +324,14 @@ async def recording(match_id: str, request: Request):
     if not MATCH_ID.fullmatch(match_id):
         raise HTTPException(400, "bad match id")
     blob = BlobClient(settings().storage_blob_endpoint, RECORDINGS_CONTAINER, recording_blob(match_id),
-                      credential=request.app.state.cred)
+                      credential=request.app.state.cred, max_single_get_size=RECORDING_RANGE)
 
-    async def download() -> bytes:
-        return await (await blob.download_blob()).readall()
+    async def download(size: int) -> bytes:
+        """The first `size` bytes, one GET per range. One download_blob() of several ranges pins the later
+        ones to the first's ETag, which the next live append changes. A prefix of an append blob never
+        changes, and each tick is one atomic append, so it ends on a whole line."""
+        return b"".join([await (await blob.download_blob(offset=o, length=min(RECORDING_RANGE, size - o))).readall()
+                         for o in range(0, size, RECORDING_RANGE)])
 
     try:
         async with blob:
