@@ -148,8 +148,27 @@ describe("keepLoadingRecording", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(asked).toHaveLength(3);
     expect(f.frames.at(-1)?.t_s).toBe(5);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(40_000);
     expect(asked).toHaveLength(3);
+  });
+
+  it("keeps its offset fresh while connected, so a reconnect late in the match fetches a short tail", async () => {
+    vi.useFakeTimers();
+    const t0 = Date.now();
+    const asked = serve(() => ticks(Math.floor((Date.now() - t0) / 1000) + 3, 1, 1));  // a tick a second
+    const sizes = () => asked.map((u) => Number(new URL(u, "http://api").searchParams.get("from") ?? 0));
+    const f = liveFeed();
+    f.connected = true;
+    void keepLoadingRecording(f, "m1", new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(asked.length).toBeGreaterThanOrEqual(25);
+    expect(asked.length).toBeLessThanOrEqual(35);
+    const latest = f.recording.size;
+
+    f.recording.wanted++;  // the socket came back after a drop
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sizes().at(-1)).toBe(latest);
+    expect(f.recording.size - latest).toBeLessThan(latest / 20);
   });
 
   it("takes nothing new since the last load as loaded, not as a failure to retry", async () => {

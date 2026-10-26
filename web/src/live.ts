@@ -126,11 +126,15 @@ const RECORDING_RETRY_S = [2, 5, 10, 20];
 /** Seconds after a backfill to look once more: the interpreter appends each tick in the background, so
  *  ticks sent just before a reconnect may not be in the recording yet when the backfill reads it. */
 const RECHECK_S = 5;
+/** Seconds between tail loads while connected. Ticks from the socket don't say where they sit in the
+ *  recording, so without these a reconnect would ask for everything since the viewer joined. */
+const KEEP_UP_S = 60;
 const sleep = (s: number) => new Promise((resolve) => setTimeout(resolve, s * 1000));
 
 /** Loads the recording once the socket is open (whatever airs while it downloads then arrives on the
  *  socket), and what was recorded since after each reconnect, since ticks sent while the socket was
- *  down only exist in the recording. Retries with back-off while the match is live, until `signal` aborts, which also
+ *  down only exist in the recording. While connected it loads the tail every minute too, so that
+ *  reconnect asks for a minute or so of ticks. Retries with back-off while the match is live, until `signal` aborts, which also
  *  cancels a download in progress. */
 export async function keepLoadingRecording(f: LiveFeed, matchId: string, signal: AbortSignal) {
   let recheckAt = Infinity;
@@ -143,7 +147,7 @@ export async function keepLoadingRecording(f: LiveFeed, matchId: string, signal:
     if (loaded) {
       f.recording.loaded = wanted;
       failures = 0;
-      recheckAt = backfill ? Date.now() + RECHECK_S * 1000 : Infinity;
+      recheckAt = Date.now() + (backfill ? RECHECK_S : f.recording.size ? KEEP_UP_S : Infinity) * 1000;
     } else await sleep(RECORDING_RETRY_S[Math.min(failures++, RECORDING_RETRY_S.length - 1)]);
   }
 }
