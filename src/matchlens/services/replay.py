@@ -65,9 +65,11 @@ def package(match_id: str, seed: int, period_min: float, cues: list[dict], frame
     for k in range(0, len(r.tracking_t), step):
         pl = r.tracking_players[k]
         b = r.tracking_ball[k]
+        rs = r.tracking_restart[k]
+        # ball height, then the pending restart, are appended so older replays (which omit them) still parse
         frames.append([round(float(r.tracking_t[k]), 1), round(float(b[0]), 1), round(float(b[1]), 1),
                        [None if pl[j][0] != pl[j][0] else [round(float(pl[j][0]), 1), round(float(pl[j][1]), 1)]
-                        for j in range(len(ids))], round(float(b[2]), 1)])  # ball height last (older replays omit it)
+                        for j in range(len(ids))], round(float(b[2]), 1), list(rs) if rs else None])
     return {"schemaVersion": "1.0", "matchId": match_id, "meta": r.metadata.model_dump(mode="json"),
             "paramsVersion": r.metadata.params_version, "playerIds": ids, "frameHz": frame_hz, "frames": frames,
             "events": [e.model_dump(mode="json", include={"event_id", "clock_s", "display_clock", "type", "team_id",
@@ -157,7 +159,7 @@ async def handle(msg, db, blobs, poison) -> bool:
     await db.get_container_client("runs").upsert_item({
         "id": f"replay-{mid}", "matchId": mid, "type": "replay", "at": time.time(), "bytes": len(body),
         "home": data.get("home"), "away": data.get("away"), "score": data.get("score"),
-        "cues": len(cues), "frames": len(pkg["frames"])})
+        "cues": len(cues), "frames": len(pkg["frames"]), "ttl": -1})  # the index outlives the container's 7-day TTL
     log.info("replay %s: %d frames, %d states, %d cues, %d KB", mid, len(pkg["frames"]), len(pkg["states"]),
              len(cues), len(body) // 1024)
     return True

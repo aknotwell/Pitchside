@@ -117,3 +117,13 @@ def test_replay_waits_for_the_full_time_recap():
 def test_replay_gives_up_waiting_for_the_recap():
     db = SimpleNamespace(get_container_client=lambda n: {"moments": _Q([]), "runs": _Runs(0)}[n])
     assert asyncio.run(wait_for_recap(db, "m1", timeout_s=0, every_s=0)) is False
+
+
+def test_replay_frames_carry_the_pending_restart():
+    live = simulate(7, match_id="m7-x", params={"period_min": 6})
+    pkg = package("m7-x", 7, 6, cues=[])
+    by_t = {round(float(t), 1): rs for t, rs in zip(live.tracking_t, live.tracking_restart, strict=True)}
+    restarts = [f[5] for f in pkg["frames"]]
+    assert restarts == [list(rs) if (rs := by_t[f[0]]) else None for f in pkg["frames"]]
+    assert restarts[0][0] == "kickoff" and any(r and r[0] == "throw_in" for r in restarts)
+    assert any(r is None for r in restarts)

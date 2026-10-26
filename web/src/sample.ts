@@ -41,5 +41,6 @@ export function sampleFrames(fs: Frame[], t: number): Frame | null {
       if (Math.abs(p2.x - p1.x) + Math.abs(p2.y - p1.y) > 8) return k < 0.5 ? p1 : p2;
       return { id: p1.id, x: cr(p0.x, p1.x, p2.x, p3.x, k), y: cr(p0.y, p1.y, p2.y, p3.y, k) };
     }),
+    restart: a.restart,
   };
 }

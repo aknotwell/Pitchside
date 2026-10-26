@@ -32,6 +32,15 @@ def test_simulator_is_deterministic(short_match):
     b = [e.model_dump() for e in again.events]
     assert a == b
     assert np.array_equal(short_match.tracking_players, again.tracking_players, equal_nan=True)
+    assert short_match.tracking_restart == again.tracking_restart
+
+
+def test_no_restart_is_announced_at_the_whistle():
+    """Seed 7 ends with a throw-in pending at full time; it is never taken, so no frame names it."""
+    r = simulate(7, params={**SHORT, "period_min": 6})
+    for _, end in r.period_bounds:
+        k = int(np.searchsorted(r.tracking_t, end))
+        assert r.tracking_restart[min(k, len(r.tracking_restart) - 1)] is None
 
 
 def test_stream_is_ordered_and_complete(short_match):
@@ -164,6 +173,25 @@ def test_top_speeds_are_human(short_match):
     assert all(s["kmh"] < 40 for s in it.state_doc()["topSpeeds"])
 
 
+def test_pass_quality_is_summarised_and_tagged(short_match):
+    it, cues, _ = run_interpreter(short_match.stream())
+    passes = [e for e in short_match.events if e.type == "pass" and e.team_id == "h"]
+    h = it.state_doc()["home"]
+    assert h["avgPassLengthM"] == pytest.approx(np.mean([e.qualifiers["length_m"] for e in passes]), abs=0.01)
+    assert 0 < h["avgPassDifficulty"] < 1
+    hard = [e for e in passes if e.qualifiers["difficulty"] >= 0.6]
+    assert h["hardPasses"] == len(hard)
+    assert h["hardPassAccuracy"] == pytest.approx(np.mean([e.outcome == "complete" for e in hard]), abs=0.01)
+    tags = [c for c in cues if c.template == "pass.quality"]
+    assert tags, "a short match still has at least one hard forward pass"
+    by_id = {e.event_id: e for e in short_match.events}
+    for c in tags:
+        ev = by_id[c.evidence.event_ids[0]]
+        assert ev.outcome == "complete" and not ev.qualifiers.get("set_piece")
+        assert c.data["difficulty"] == round(10 * ev.qualifiers["difficulty"]) >= 8
+    assert all(b.display_at_s - a.display_at_s >= 90 for a, b in zip(tags, tags[1:], strict=False))
+
+
 def test_interpreter_replay_is_identical(short_match):
     msgs = list(short_match.stream())
     it1, cues1, moments1 = run_interpreter(msgs)
@@ -220,3 +248,21 @@ def test_offside_is_called_and_restarts_with_the_defending_side():
             if restart.type == "pass":  # (unless the whistle went for the end of the half first)
                 assert restart.team_id != e.team_id and restart.qualifiers.get("set_piece") == "free_kick"
     assert called > 0
+
+
+def test_frames_say_which_restart_the_ball_is_dead_for(short_match):
+    frames = [f for m in short_match.stream() if m.kind == "tracking" for f in m.payload["frames"]]
+    at = {f["t_s"]: f["restart"] for f in frames}
+    assert frames[0]["restart"] == {"kind": "kickoff", "team": frames[0]["restart"]["team"]}
+    kinds = {f["restart"]["kind"] for f in frames if f["restart"]}
+    assert {"kickoff", "throw_in", "goal_kick"} <= kinds
+    # the ball goes out, and the frames carry the restart it was given to the other side
+    ev = short_match.events
+    taken = [e for n, e in enumerate(ev) if e.type == "ball_out"
+             and next(x for x in ev[n + 1:] if x.type in ("pass", "period_end")).type == "pass"]
+    assert taken
+    for e in taken:  # (one still pending at the whistle is never taken, so it isn't announced)
+        rs = at[round(e.clock_s, 2)]
+        assert rs == {"kind": e.qualifiers["restart"], "team": "a" if e.team_id == "h" else "h"}
+    live = sum(f["restart"] is None for f in frames)
+    assert 0.5 * len(frames) < live < len(frames)

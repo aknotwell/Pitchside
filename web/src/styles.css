@@ -46,6 +46,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; pa
 .scoreboard .live { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
 .scoreboard .live.on { color: var(--accent); border-color: var(--accent); }
 .overlay { position: absolute; inset: 0; pointer-events: none; }
+.restart-label { position: absolute; top: 54px; left: 12px; transform: translateY(-4px); z-index: 2; pointer-events: none; white-space: nowrap;
+  background: rgba(8,12,18,.88); border-left: 4px solid var(--accent); padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 14px;
+  opacity: 0; transition: opacity .3s ease, transform .3s ease; }
+.restart-label.on { opacity: 1; transform: none; }
 .thirds { position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 8px; max-width: min(560px, 80%); }
 .third, .panel { pointer-events: auto; background: rgba(8,12,18,.92); border-left: 4px solid var(--accent); padding: 8px 12px; border-radius: 6px; animation: slide .35s ease-out; }
 .third.goal { border-left-color: var(--warn); } .third.t-graphic { border-left-color: var(--ai); }
