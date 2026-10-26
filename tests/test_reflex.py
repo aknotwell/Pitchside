@@ -119,8 +119,10 @@ def test_tier1_values_come_only_from_slots():
     assert fill("{home} won {home.goals}-{away.goals} with {home.possessionPct}% of the ball.", values, "en") == (
         "Copperfield won 1-0 with 47% of the ball.", [])
     assert fill("xG {home.xg}", slots(STATE, "es"), "es")[0] == "xG 1,75"
+    assert fill("{home}", {"home": "St. Mirren"}, "es")[0] == "St. Mirren"  # only numbers get decimal commas
     assert narration_problems("{home} won {home.goals}-{away.goals} on xG {home.xg}.", values, STATE) == []
     assert narration_problems("{fastest1.name} was quickest, a {home}が一番速かった.", values, STATE) == []
+    assert narration_problems("{away} no logró marcar pese a {away.shots} tiros.", slots(STATE, "es"), STATE) == []
 
 
 @pytest.mark.parametrize("raw", [
@@ -128,9 +130,19 @@ def test_tier1_values_come_only_from_slots():
     "{away} had zero shots on target.", "٣ goals", "三", "a goalless spell for {away}", "{home} scored a brace",
     "同点", "Copperfield won.", "{away} lead {home.goals}-{away.goals}... no, {away} had {home.shots} shots.",
     "{home} had {home shots} shots.", "{home} had {{home.shots}} shots.", "{home.name} won.",
+    "Ironvale lead {home.goals}-{away.goals}.", "copperfield won {home.goals}-{away.goals}.",
+    "{away}, with {home.shots} shots, pressed hard.", "{home}は、{away.shots}本のシュートを放った。",
+    "The visitors had {home.shots} shots.", "{away} had no shots on target.",
 ])
 def test_tier1_rejects_what_code_did_not_write(raw):
     assert narration_problems(raw, slots(STATE, "en"), STATE), raw
+
+
+async def test_tier1_names_clubs_only_as_home_and_away():
+    model = FakeModel({"capability": "overview", "fit:overview": "yes", "betting": "no"},
+                      narration="{fastest1.team} had {away.shots} shots.")
+    res = await Reflex(model).answer("why?", "en", state)
+    assert res.text is None and res.problems == ["unknown slot fastest1.team"]
 
 
 def test_tier1_rejects_unlisted_players_and_betting():

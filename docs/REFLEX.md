@@ -50,7 +50,7 @@ so Reflex asks everything a decision needs in a single request.
 | Tier | What writes the answer | Capabilities |
 |---|---|---|
 | 0 | Code fills a localized template (en, es, ja) from the state document. No model writes a number. | score, xG, shots, possession, passing, pressing, fastest players, cards, last 10 minutes |
-| 1 | One tool-free gpt-4.1-mini call writes the prose, but every club and number is a slot such as `{home}` or `{home.shots}` that code fills in. These send the turn to the agent: a digit, a number word ("three", "goalless", "a brace", 三, 同点) or a club name the model wrote itself, an unknown or malformed slot, a clause that names one club with only the other club's numbers, a roster player outside the slots, or betting language. | "who has been better and why" overview |
+| 1 | One tool-free gpt-4.1-mini call writes the prose, but every club and number is a slot such as `{home}` or `{home.shots}` that code fills in. These send the turn to the agent: a digit, a number word ("three", "goalless", "no shots", 三, 同点), a club name the model wrote itself (full name or first word, any case), "the visitors" and similar, an unknown or malformed slot, a sentence that names one club with only the other club's numbers, a roster player outside the slots, or betting language. | "who has been better and why" overview |
 | decline | Code | betting and odds |
 | pass | The MCP agent, already running | everything else |
 
@@ -91,13 +91,15 @@ set (50 questions) was used to tune the capability descriptions. The test set
 
 | Set | Answerable answered | Wrong answers | Tier 0 p50 | Tier 1 p50 | Probe p50 | Labels changed on a rerun |
 |---|---|---|---|---|---|---|
-| dev, 50 | 34 / 37 (92%) | 2 / 36 | 1.22 s | 2.35 s | 1.21 s | 0 / 50 |
-| **test, 34** | **22 / 24 (92%)** | **1 / 23** | **1.07 s** | **2.51 s** | **1.10 s** | **2 / 34** |
+| dev, 50 | 31 / 37 (84%) | 2 / 33 | 1.28 s | 2.51 s | 1.16 s | 0 / 50 |
+| **test, 34** | **21 / 24 (88%)** | **1 / 22** | **1.18 s** | **2.47 s** | **1.18 s** | **2 / 34** |
 
-These numbers come after two review rounds: raw probabilities, slots for
+These numbers come after three review rounds: raw probabilities, slots for
 every Tier 1 club and number, and a betting question checked in both orders.
 The dev set was used for tuning. The test set was never tuned on. It was scored
-once per review round, and the first-round score was 88%.
+after each review round, and the scores ranged from 83% to 92%. Most of the
+difference is Tier 1. Each tightening of its check sends more overview
+answers to the agent.
 
 The wrong test answer was "Which team had more possession in the first
 half?". Reflex gave the whole-match split, but the state has no per-half data.
@@ -117,11 +119,12 @@ The same questions take **5 to 21 s** on the agent path.
   in a row pass. That is the designed behaviour (no retries), but it shows the
   fast path is only as steady as the shared deployment.
 - Slots stop a Tier 1 answer from containing a number that isn't in the match
-  state. The clause check catches a club named with only the other club's
+  state. The sentence check catches a club named with only the other club's
   numbers. It can't catch every misattribution: "{away} lead
   {home.goals}-{away.goals}" uses both sides and passes. Number words are a
-  deny-list, so an unlisted phrase can slip through. Tier 0 templates have
-  neither gap. The agent that Tier 1 replaces has no number check at all.
+  deny-list, so an unlisted phrase can slip through. Club and player names
+  written in katakana are not checked. Tier 0 templates have none of these
+  gaps. The agent that Tier 1 replaces has no number check at all.
 - The probe is a real model call (~1.1 s), not a dedicated classifier. A
   logprob-capable model is required, so it runs on gpt-4.1-mini, not gpt-5-mini.
 - The gpt-4.1-mini deployment allows 50 requests a minute. The storyteller
