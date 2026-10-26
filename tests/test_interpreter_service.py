@@ -204,8 +204,10 @@ async def test_recordings_past_the_in_flight_cap_are_dropped_and_counted(monkeyp
     assert [p[1]["frames"][0]["t_s"] for p in published] == [30.0]
 
 
-async def test_shutdown_lets_recording_appends_in_flight_land(monkeypatch):
-    """Checkpoints run ahead of the background appends, so one dropped at shutdown is lost for good."""
+@pytest.mark.parametrize("batch_failed", [False, True])
+async def test_shutdown_lets_recording_appends_in_flight_land(monkeypatch, batch_failed):
+    """Checkpoints run ahead of the background appends, so one dropped at shutdown is lost for good,
+    and a failed batch's exit to be restarted must wait for them too."""
     import signal
     from unittest.mock import MagicMock
 
@@ -236,6 +238,7 @@ async def test_shutdown_lets_recording_appends_in_flight_land(monkeypatch):
 
         async def receive_batch(self, **kwargs):
             svc._record_nowait("m1", {"type": "tick", "frames": []})  # then SIGTERM closes the consumer
+            svc.failed = batch_failed  # or a later batch fails and closes it
 
     for module, name in ((azure.cosmos.aio, "CosmosClient"), (azure.servicebus.aio, "ServiceBusClient"),
                          (azure.messaging.webpubsubservice.aio, "WebPubSubServiceClient"),
@@ -248,7 +251,11 @@ async def test_shutdown_lets_recording_appends_in_flight_land(monkeypatch):
     monkeypatch.setattr(interp, "signal", SimpleNamespace(SIGTERM=signal.SIGUSR1, SIGINT=signal.SIGUSR2))
     monkeypatch.delenv("EVENTGRID_ENDPOINT", raising=False)
 
-    await svc.start()
+    if batch_failed:
+        with pytest.raises(SystemExit):
+            await svc.start()
+    else:
+        await svc.start()
 
     assert _lines(rec, "m1") == [{"type": "tick", "frames": []}]
 
