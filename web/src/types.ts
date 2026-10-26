@@ -28,6 +28,9 @@ export interface TeamSummary {
   id: string; name: string; goals: number; shots: number; shotsOnTarget: number; xg: number;
   passes: number; passAccuracy: number; finalThirdEntries: number; ppda: number | null;
   pressures: number; turnovers: number;
+  // Pass quality and shot speed (absent from state docs written before they were added)
+  avgPassLengthM?: number; avgPassDifficulty?: number; hardPasses?: number; hardPassAccuracy?: number | null;
+  fastestShotKmh?: number;
 }
 
 export interface MatchState {
