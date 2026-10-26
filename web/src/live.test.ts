@@ -125,6 +125,27 @@ describe("keepLoadingRecording", () => {
     expect(f.frames.at(-1)?.t_s).toBe(8);
   });
 
+  it("looks once more a few seconds after a backfill, for ticks whose appends were still landing", async () => {
+    vi.useFakeTimers();
+    let recorded = ticks(3, 1, 1);
+    const asked = serve(() => recorded);
+    const f = liveFeed();
+    f.connected = true;
+    void keepLoadingRecording(f, "m1", new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    recorded = ticks(5, 1, 1);
+    f.recording.wanted++;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(asked).toHaveLength(2);
+    recorded = ticks(6, 1, 1);  // sent before the reconnect, appended after the backfill read
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(asked).toHaveLength(3);
+    expect(f.frames.at(-1)?.t_s).toBe(5);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(asked).toHaveLength(3);
+  });
+
   it("takes nothing new since the last load as loaded, not as a failure to retry", async () => {
     vi.useFakeTimers();
     const asked = serve(() => ticks(3, 1, 1));
@@ -134,7 +155,7 @@ describe("keepLoadingRecording", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     f.recording.wanted++;
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(asked).toHaveLength(2);
+    expect(asked).toHaveLength(3);  // the load, the backfill, and its one look again
     expect(f.recording.loaded).toBe(f.recording.wanted);
   });
 

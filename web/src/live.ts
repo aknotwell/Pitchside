@@ -121,6 +121,9 @@ async function loadRecording(f: LiveFeed, matchId: string, signal: AbortSignal):
 
 /** Seconds to wait after each failed recording load. At kick-off a 404 is normal: nothing is recorded yet. */
 const RECORDING_RETRY_S = [2, 5, 10, 20];
+/** Seconds after a backfill to look once more: the interpreter appends each tick in the background, so
+ *  ticks sent just before a reconnect may not be in the recording yet when the backfill reads it. */
+const RECHECK_S = 5;
 const sleep = (s: number) => new Promise((resolve) => setTimeout(resolve, s * 1000));
 
 /** Loads the recording once the socket is open (whatever airs while it downloads then arrives on the
@@ -128,13 +131,18 @@ const sleep = (s: number) => new Promise((resolve) => setTimeout(resolve, s * 10
  *  down only exist in the recording. Retries with back-off while the match is live, until `signal` aborts, which also
  *  cancels a download in progress. */
 export async function keepLoadingRecording(f: LiveFeed, matchId: string, signal: AbortSignal) {
+  let recheckAt = Infinity;
   for (let failures = 0; !signal.aborted;) {
     const wanted = f.recording.wanted;
-    if (!f.connected || f.recording.loaded === wanted) { await sleep(0.2); continue; }
+    if (!f.connected || (f.recording.loaded === wanted && Date.now() < recheckAt)) { await sleep(0.2); continue; }
+    const backfill = f.recording.size > 0 && f.recording.loaded !== wanted;
     const loaded = await loadRecording(f, matchId, signal);
     if (f.states[f.states.length - 1]?.ended) return;
-    if (loaded) { f.recording.loaded = wanted; failures = 0; }
-    else await sleep(RECORDING_RETRY_S[Math.min(failures++, RECORDING_RETRY_S.length - 1)]);
+    if (loaded) {
+      f.recording.loaded = wanted;
+      failures = 0;
+      recheckAt = backfill ? Date.now() + RECHECK_S * 1000 : Infinity;
+    } else await sleep(RECORDING_RETRY_S[Math.min(failures++, RECORDING_RETRY_S.length - 1)]);
   }
 }
 
