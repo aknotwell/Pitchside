@@ -95,6 +95,8 @@ class InterpreterService:
                 on_event_batch=self.on_batch, on_error=self.on_error,
                 on_partition_initialize=self.on_partition_initialize, on_partition_close=self.on_partition_close,
                 max_batch_size=400, max_wait_time=0.5, starting_position="-1")
+            if self.bg:  # checkpoints run ahead of recording appends; asyncio.run would cancel these
+                await asyncio.wait(self.bg, timeout=RECORD_TIMEOUT_S)
 
     async def on_error(self, partition_context, error) -> None:
         pid = getattr(partition_context, "partition_id", None)

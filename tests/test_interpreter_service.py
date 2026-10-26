@@ -191,3 +191,52 @@ async def test_recordings_past_the_in_flight_cap_are_dropped_and_counted(monkeyp
 
     assert rec.blobs == {} and svc.lost_records == 1
     assert [p[1]["frames"][0]["t_s"] for p in published] == [30.0]
+
+
+async def test_shutdown_lets_recording_appends_in_flight_land(monkeypatch):
+    """Checkpoints run ahead of the background appends, so one dropped at shutdown is lost for good."""
+    import signal
+    from unittest.mock import MagicMock
+
+    import azure.cosmos.aio
+    import azure.eventhub.aio
+    import azure.eventhub.extensions.checkpointstoreblobaio
+    import azure.messaging.webpubsubservice.aio
+    import azure.servicebus.aio
+    import azure.storage.blob.aio
+
+    import matchlens.services.interpreter as interp
+
+    rec = FakeContainer()
+    svc = interp.InterpreterService()
+
+    class Consumer:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def close(self):
+            pass
+
+        async def receive_batch(self, **kwargs):
+            svc._record_nowait("m1", {"type": "tick", "frames": []})  # then SIGTERM closes the consumer
+
+    for module, name in ((azure.cosmos.aio, "CosmosClient"), (azure.servicebus.aio, "ServiceBusClient"),
+                         (azure.messaging.webpubsubservice.aio, "WebPubSubServiceClient"),
+                         (azure.eventhub.extensions.checkpointstoreblobaio, "BlobCheckpointStore")):
+        monkeypatch.setattr(module, name, MagicMock())
+    monkeypatch.setattr(azure.eventhub.aio, "EventHubConsumerClient", Consumer)
+    monkeypatch.setattr(azure.storage.blob.aio, "BlobServiceClient",
+                        lambda *a, **k: SimpleNamespace(get_container_client=lambda name: rec))
+    monkeypatch.setattr(interp, "async_credential", MagicMock)
+    monkeypatch.setattr(interp, "signal", SimpleNamespace(SIGTERM=signal.SIGUSR1, SIGINT=signal.SIGUSR2))
+    monkeypatch.delenv("EVENTGRID_ENDPOINT", raising=False)
+
+    await svc.start()
+
+    assert _lines(rec, "m1") == [{"type": "tick", "frames": []}]
