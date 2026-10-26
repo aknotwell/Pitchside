@@ -30,11 +30,15 @@ resource db 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-11-15' = {
   properties: { resource: { id: 'matchlens' } }
 }
 
+// A finished match's state doc expires 30 days after the whistle (FINISHED_STATE_TTL_S in
+// interpreter.py). Its cues, moments and runs are written earlier, so they keep 31 days: a match
+// still in the list never loses its goals, overlays or recap.
+var matchDataTtl = 31 * 86400
 var containers = [
   { name: 'matchState', pk: '/matchId', ttl: -1 }
-  { name: 'cues', pk: '/matchId', ttl: 604800 }
-  { name: 'moments', pk: '/matchId', ttl: 604800 }
-  { name: 'runs', pk: '/matchId', ttl: 604800 }
+  { name: 'cues', pk: '/matchId', ttl: matchDataTtl }
+  { name: 'moments', pk: '/matchId', ttl: matchDataTtl }
+  { name: 'runs', pk: '/matchId', ttl: matchDataTtl }
   { name: 'checkpoints', pk: '/workflow_name', ttl: 86400 }
   { name: 'leases', pk: '/id', ttl: -1 }
 ]

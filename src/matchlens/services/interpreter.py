@@ -42,7 +42,7 @@ EMIT_ATTEMPTS = 3
 EMIT_BACKOFF_S = 0.5
 REBUILD_CONSUMER_GROUP = "interpreter-rebuild"
 REBUILD_TIMEOUT_S = 120.0
-FINISHED_STATE_TTL_S = 30 * 86400
+FINISHED_STATE_TTL_S = 30 * 86400  # cues, moments and runs keep 31 days (infra/modules/data.bicep)
 
 
 class InterpreterService:
