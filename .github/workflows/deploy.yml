@@ -65,6 +65,9 @@ jobs:
           fi
           echo "provision=${CHANGED:-false}" >> "$GITHUB_OUTPUT"
       - uses: Azure/setup-azd@v2
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -101,9 +104,17 @@ jobs:
           azd env set REPLAY_JOB_NAME "job-replay-$T"
           azd env set FUNCTIONS_APP_NAME "func-cues-$T"
           azd env set KEYVAULT_NAME "kv-$T"
+          FOUNDRY=$(az resource show -g "$RG" -n "ca-story-$T" --resource-type Microsoft.App/containerApps \
+            --query "properties.template.containers[0].env[?name=='FOUNDRY_PROJECT_ENDPOINT'].value | [0]" -o tsv)
+          [ -n "$FOUNDRY" ] || { echo "::error::no FOUNDRY_PROJECT_ENDPOINT on ca-story-$T"; exit 1; }
+          azd env set FOUNDRY_PROJECT_ENDPOINT "$FOUNDRY"
           az config set extension.use_dynamic_install=yes_without_prompt
       - if: steps.infra.outputs.provision == 'true'
         run: azd provision --no-prompt
+      - name: Evaluation gate (Foundry evaluators + code verifier)
+        # Runs the checked-out storyteller against Foundry, so it judges the new code before any
+        # image ships. A miss fails the job here and nothing is deployed.
+        run: uv sync --frozen && uv run python scripts/evaluate.py --seeds 501 502 --max-moments 8
       - run: azd deploy --all --no-prompt
       - name: Smoke test
         run: |
