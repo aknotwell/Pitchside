@@ -102,9 +102,10 @@ async function loadRecording(f: LiveFeed, matchId: string, signal: AbortSignal):
     const from = f.recording.size;
     const r = await fetch(`${API}/api/matches/${matchId}/recording${from ? `?from=${from}` : ""}`, { signal });
     if (!r.ok) throw new Error(`${r.status}`);
-    const ticks: Tick[] = (await r.text()).split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const body = await r.arrayBuffer();  // already inflated: its length is bytes of the recording
+    const ticks: Tick[] = new TextDecoder().decode(body).split("\n").filter(Boolean).map((line) => JSON.parse(line));
     if (!from && !ticks.length) return false;  // created before its first tick: try again
-    f.recording.size = Number(r.headers.get("X-Recording-Size")) || 0;
+    f.recording.size = from + body.byteLength;
     const frames = ticks.flatMap((t) => t.frames ?? []).sort((a, b) => a.t_s - b.t_s);
     f.frames = mergeByTime(f.frames, frames, byT);
     f.states = mergeByTime(f.states, ticks.flatMap((t) => (t.state ? [t.state] : [])).sort((a, b) => a.clockS - b.clockS), byClock);

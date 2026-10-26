@@ -93,18 +93,38 @@ describe("keepLoadingRecording", () => {
   });
 
   /** The recording endpoint over `recorded`: the whole of it, or with `from` only the bytes after that
-   *  offset (204 when there are none). Every reply says the size it covers. Returns the URLs asked for. */
+   *  offset (204 when there are none, 400 past the end). Returns the URLs asked for. */
   function serve(recorded: () => Tick[]) {
     const asked: string[] = [];
     vi.stubGlobal("fetch", async (url: string) => {
       asked.push(url);
       const all = new TextEncoder().encode(recorded().map((x) => JSON.stringify(x) + "\n").join(""));
       const from = Number(new URL(url, "http://api").searchParams.get("from") ?? 0);
-      const headers = { "X-Recording-Size": String(all.length) };
-      return from === all.length ? new Response(null, { status: 204, headers }) : new Response(all.slice(from), { headers });
+      if (from > all.length) return new Response("", { status: 400 });
+      return from === all.length ? new Response(null, { status: 204 }) : new Response(all.slice(from));
     });
     return asked;
   }
+  const bytes = (ts: Tick[]) => new TextEncoder().encode(ts.map((x) => JSON.stringify(x) + "\n").join("")).length;
+
+  it("counts its offset in bytes of what it was sent, so the next tail starts on the tick after", async () => {
+    vi.useFakeTimers();
+    const named = (n: number): Tick[] => ticks(n, 1, 1).map((t) => ({ ...t, frames: t.frames!.map((x) => ({ ...x, players: [{ id: "atlético-9", x: 0, y: 0 }] })) }));
+    let recorded = named(3);
+    const asked = serve(() => recorded);
+    const f = liveFeed();
+    f.connected = true;
+    void keepLoadingRecording(f, "m1", new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(f.recording.size).toBe(bytes(recorded));
+
+    recorded = named(5);
+    f.recording.wanted++;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(asked[1]).toBe(`/api/matches/m1/recording?from=${bytes(named(3))}`);
+    expect(f.recording.size).toBe(bytes(recorded));
+    expect(f.frames.map((x) => x.t_s)).toEqual(named(5).flatMap((t) => t.frames!.map((x) => x.t_s)));
+  });
 
   it("after a drop asks only for what was recorded since, and stops once the match has ended", async () => {
     vi.useFakeTimers();
@@ -116,7 +136,7 @@ describe("keepLoadingRecording", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(asked).toEqual(["/api/matches/m1/recording"]);
 
-    const before = new TextEncoder().encode(recorded.map((x) => JSON.stringify(x) + "\n").join("")).length;
+    const before = bytes(recorded);
     recorded = ticks(8, 1, 1);  // aired while the socket was down
     f.recording.wanted++;
     await vi.advanceTimersByTimeAsync(1_000);

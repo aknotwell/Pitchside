@@ -159,8 +159,7 @@ app = FastAPI(title="MatchLens API", version="0.1.0", lifespan=lifespan)
 if os.environ.get("CORS_DEV"):
     from fastapi.middleware.cors import CORSMiddleware
 
-    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
-                       expose_headers=["X-Recording-Size"])
+    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 def client_key(request: Request) -> str:
@@ -418,8 +417,7 @@ class RecordingCache:
         self.max_matches = max_matches
         self.entries: OrderedDict[str, RecordingCache.Entry] = OrderedDict()
 
-    async def get(self, match_id: str, size: int, download) -> tuple[int, bytes]:
-        """A gzipped copy of at least the first `size` bytes, and how many bytes it holds."""
+    async def get(self, match_id: str, size: int, download) -> bytes:
         e = self.entries.setdefault(match_id, RecordingCache.Entry())
         self.entries.move_to_end(match_id)
         while len(self.entries) > self.max_matches:
@@ -429,7 +427,7 @@ class RecordingCache:
                 data = await download(size)
                 e.body = await asyncio.to_thread(gzip.compress, data, 1)  # level 6 is ~30% smaller and ~4x slower
                 e.size = len(data)
-            return e.size, e.body
+            return e.body
 
 
 recording_cache = RecordingCache()
@@ -439,7 +437,8 @@ recording_cache = RecordingCache()
 async def recording(match_id: str, request: Request, start: int | None = Query(None, alias="from", ge=0)):
     """Every live tick broadcast so far (one JSON line each), so a late joiner can scrub back to kick-off.
     `from` asks for only the ticks after that many bytes, so a reconnecting viewer fetches just what it
-    missed. X-Recording-Size says where the reply ends: the `from` to ask for next."""
+    missed. A reply is the recording's bytes from `from` (or 0) to a tick boundary, so `from` plus its
+    decoded length is the next `from`. 204 means nothing new."""
     from azure.core.exceptions import ResourceNotFoundError
 
     if not MATCH_ID.fullmatch(match_id):
@@ -460,7 +459,7 @@ async def recording(match_id: str, request: Request, start: int | None = Query(N
         if not size:  # created, but its first tick not yet appended
             raise ResourceNotFoundError("recording is empty")
         if start is None:
-            size, body = await recording_cache.get(match_id, size, download)
+            body = await recording_cache.get(match_id, size, download)
         elif start < size:  # a tail is small: no cache, and quick to compress
             body = await asyncio.to_thread(gzip.compress, await download(size, start), 1)
         else:  # nothing new, or an offset past the end
@@ -472,10 +471,9 @@ async def recording(match_id: str, request: Request, start: int | None = Query(N
         raise HTTPException(502, "recording unavailable") from exc
     if start is not None and start > size:
         raise HTTPException(400, "from is past the end of the recording")
-    headers = {"Cache-Control": "no-store", "X-Recording-Size": str(size)}
     if body is None:
-        return Response(status_code=204, headers=headers)
-    return Response(body, media_type="application/x-ndjson", headers={**headers, "Content-Encoding": "gzip"})
+        return Response(status_code=204, headers={"Cache-Control": "no-store"})
+    return Response(body, media_type="application/x-ndjson", headers={"Content-Encoding": "gzip", "Cache-Control": "no-store"})
 
 
 @app.post("/api/chaos")
