@@ -11,7 +11,8 @@ export type SocketLike = Pick<WebSocket, "onopen" | "onclose" | "onmessage" | "c
 export interface FeedDeps {
   /** A fresh Web PubSub URL: negotiated again on every (re)connect, since tokens expire. */
   negotiate: () => Promise<{ url: string }>;
-  /** Cue history over REST, merged by id after every (re)connect so cues sent while we were away still show. */
+  /** Cues over REST, fetched on every open: the first open's are the viewer's history, and a reopen's
+   *  hold the cues sent while the socket was down. */
   cues: () => Promise<{ cues: Cue[] }>;
   open: (url: string) => SocketLike;
   wait?: (ms: number, fn: () => void) => () => void;
@@ -19,11 +20,14 @@ export interface FeedDeps {
 
 export interface FeedHandlers {
   onMessage: (data: unknown) => void;
-  onCues: (cues: Cue[]) => void;
+  /** One open's cues. The first open's are the history, not `late`: retried until they land, and merged
+   *  before any later open's whatever order the replies come back in. A later open's are `late`. */
+  onCues: (cues: Cue[], late: boolean) => void;
   onConnected: (connected: boolean) => void;
 }
 
 const defaultWait = (ms: number, fn: () => void) => { const t = setTimeout(fn, ms); return () => clearTimeout(t); };
+const backoffMs = (failures: number) => RECONNECT_BACKOFF_S[Math.min(failures, RECONNECT_BACKOFF_S.length - 1)] * 1000;
 
 /** Keep a socket open until the returned stop function is called, reconnecting with backoff. */
 export function keepConnected(deps: FeedDeps, h: FeedHandlers): () => void {
@@ -32,13 +36,21 @@ export function keepConnected(deps: FeedDeps, h: FeedHandlers): () => void {
   let attempt = 0;
   let socket: SocketLike | null = null;
   let cancelRetry: (() => void) | null = null;
+  let history: Promise<void> | null = null;
+  let cancelHistoryRetry: (() => void) | null = null;
 
   const retry = () => {
     if (stopped || cancelRetry) return;
-    const delay = RECONNECT_BACKOFF_S[Math.min(attempt, RECONNECT_BACKOFF_S.length - 1)];
-    attempt++;
-    cancelRetry = wait(delay * 1000, () => { cancelRetry = null; void connect(); });
+    cancelRetry = wait(backoffMs(attempt++), () => { cancelRetry = null; void connect(); });
   };
+
+  const fetchHistory = (failures: number): Promise<void> => deps.cues().then(
+    (r) => { if (!stopped) h.onCues(r.cues, false); },
+    (e) => new Promise<void>((resolve) => {
+      if (stopped) return;
+      console.warn("cue history failed", e);
+      cancelHistoryRetry = wait(backoffMs(failures), () => resolve(fetchHistory(failures + 1)));
+    }));
 
   const connect = async () => {
     try {
@@ -49,7 +61,9 @@ export function keepConnected(deps: FeedDeps, h: FeedHandlers): () => void {
       s.onopen = () => {
         attempt = 0;
         h.onConnected(true);
-        deps.cues().then((r) => { if (!stopped) h.onCues(r.cues); }).catch(() => {});
+        if (!history) { history = fetchHistory(0); return; }
+        const missed = deps.cues().catch(() => null);
+        void history.then(() => missed).then((r) => { if (r && !stopped) h.onCues(r.cues, true); });
       };
       s.onclose = () => {
         if (socket === s) socket = null;
@@ -67,6 +81,7 @@ export function keepConnected(deps: FeedDeps, h: FeedHandlers): () => void {
   return () => {
     stopped = true;
     cancelRetry?.();
+    cancelHistoryRetry?.();
     socket?.close();
   };
 }

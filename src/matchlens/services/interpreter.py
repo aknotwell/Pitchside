@@ -8,11 +8,13 @@
   fails the replica stops without checkpointing, so the restarted one reads the batch again.
 * Hot path: template cues are written straight to Cosmos ``cues`` (the change feed fans them out).
 * Warm path: moments go to Service Bus (session = match id, so each match is explained in order).
+* Every live tick is also appended to the match's recording, so late joiners can scrub back to kick-off.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import pickle
@@ -22,7 +24,7 @@ import time
 from opentelemetry import trace
 
 from matchlens.azure_io.common import async_credential, create_once, settings, setup_telemetry
-from matchlens.contracts import StreamMessage, frames_group
+from matchlens.contracts import RECORDINGS_CONTAINER, StreamMessage, frames_group, recording_blob
 from matchlens.interpret.state import MatchInterpreter, Output
 
 log = logging.getLogger("matchlens.interpreter")
@@ -33,6 +35,8 @@ TICK_EVERY_S = 1.0  # one coalesced Web PubSub message per match per second
 MAX_FRAMES_PER_TICK = 15
 MAX_INFLIGHT_PUBLISHES = 64  # live ticks are ephemeral: drop them rather than slow the stream down
 PUBLISH_TIMEOUT_S = 3.0
+MAX_INFLIGHT_RECORDINGS = 64  # past this, ticks go unrecorded (and counted) rather than hold up the batch loop
+RECORD_TIMEOUT_S = 5.0
 SNAPSHOT_VERSION = 1  # bump when MatchInterpreter changes shape; older snapshots are rebuilt from the stream
 EMIT_ATTEMPTS = 3
 EMIT_BACKOFF_S = 0.5
@@ -55,6 +59,8 @@ class InterpreterService:
         self.consumer = None
         self.inflight = 0
         self.dropped_ticks = 0
+        self.recording_inflight = 0
+        self.lost_records = 0
         self.bg: set[asyncio.Task] = set()
 
     async def start(self) -> None:
@@ -82,6 +88,7 @@ class InterpreterService:
 
             self.eventgrid = EventGridPublisherClient(os.environ["EVENTGRID_ENDPOINT"], self.cred)
         self.snapshots = self.blobs.get_container_client(s.checkpoint_container)
+        self.recordings = self.blobs.get_container_client(RECORDINGS_CONTAINER)
         store = BlobCheckpointStore(blob_account_url=s.storage_blob_endpoint, container_name=s.checkpoint_container,
                                     credential=self.cred)
         consumer = EventHubConsumerClient(fully_qualified_namespace=s.eventhub_fqdn, eventhub_name=s.eventhub_name,
@@ -100,6 +107,8 @@ class InterpreterService:
                 on_event_batch=self.on_batch, on_error=self.on_error,
                 on_partition_initialize=self.on_partition_initialize, on_partition_close=self.on_partition_close,
                 max_batch_size=400, max_wait_time=0.5, starting_position="-1")
+            if self.bg:  # checkpoints run ahead of recording appends; asyncio.run would cancel these
+                await asyncio.wait(self.bg, timeout=RECORD_TIMEOUT_S)
         if self.failed:
             raise SystemExit(1)  # Container Apps restarts us; the new process resumes from the last checkpoint
 
@@ -290,8 +299,10 @@ class InterpreterService:
             if len(frames) > MAX_FRAMES_PER_TICK:  # keep evenly spaced frames; the browser interpolates
                 step = len(frames) / MAX_FRAMES_PER_TICK
                 frames = [frames[int(k * step)] for k in range(MAX_FRAMES_PER_TICK - 1)] + [frames[-1]]
-            tick = {"type": "tick", "matchId": mid, "frames": frames, "state": self.pending_state.pop(mid, None)}
+            tick = {"type": "tick", "matchId": mid, "frames": frames, "state": self.pending_state.pop(mid, None),
+                    "wallMs": int(time.time() * 1000)}  # lets a late joiner read the pace off the recording
             self.last_tick[mid] = now
+            self._record_nowait(mid, tick)  # even when back-pressure drops the publish below
             self._publish_nowait(frames_group(mid), tick)
         if sb_msgs:  # Service Bus dedupes on message_id, so a retried send is safe
             tasks.append(lambda: self.sender.send_messages([
@@ -319,18 +330,61 @@ class InterpreterService:
                 log.warning("output failed (attempt %d): %s: %s", attempt + 1, type(exc).__name__, exc)
                 await asyncio.sleep(EMIT_BACKOFF_S * 2 ** attempt)
 
+    def _record_nowait(self, match_id: str, tick: dict) -> None:
+        if self.recording_inflight >= MAX_INFLIGHT_RECORDINGS:
+            self._lost_record("too many appends in flight")
+            return
+        self.recording_inflight += 1
+        task = asyncio.create_task(self._record(match_id, tick))
+        self.bg.add(task)
+        task.add_done_callback(self.bg.discard)
+
+    def _lost_record(self, why: object) -> None:
+        self.lost_records += 1
+        if self.lost_records % 100 == 1:
+            log.warning("recording is failing (%s): %d ticks missing from recordings so far", why, self.lost_records)
+
+    async def _record(self, match_id: str, tick: dict) -> None:
+        try:
+            await asyncio.wait_for(self._append(match_id, tick), timeout=RECORD_TIMEOUT_S)
+        except Exception as exc:
+            self._lost_record(repr(exc))
+        finally:
+            self.recording_inflight -= 1
+
+    async def _append(self, match_id: str, tick: dict) -> None:
+        """Append one tick to the match's recording. It holds only what was broadcast, never a
+        re-simulation, so it can't reveal the future. A failover may repeat frames; the player dedupes."""
+        from azure.core import MatchConditions
+        from azure.core.exceptions import (
+            ResourceExistsError,
+            ResourceModifiedError,
+            ResourceNotFoundError,
+        )
+
+        blob = self.recordings.get_blob_client(recording_blob(match_id))
+        line = (json.dumps(tick, separators=(",", ":")) + "\n").encode()
+        try:
+            await blob.append_block(line)
+        except ResourceNotFoundError:
+            try:
+                await blob.create_append_blob(match_condition=MatchConditions.IfMissing)
+            except (ResourceExistsError, ResourceModifiedError):
+                pass  # another append got there first (IfMissing can fail as 409 or as 412 ConditionNotMet)
+            await blob.append_block(line)
+
     def _publish_nowait(self, group: str, payload: dict) -> None:
         if self.inflight >= MAX_INFLIGHT_PUBLISHES:
             self.dropped_ticks += 1
             if self.dropped_ticks % 100 == 1:
                 log.warning("Web PubSub is slow: dropped %d live ticks so far", self.dropped_ticks)
             return
+        self.inflight += 1
         task = asyncio.create_task(self._publish(group, payload))
         self.bg.add(task)
         task.add_done_callback(self.bg.discard)
 
     async def _publish(self, group: str, payload: dict) -> None:
-        self.inflight += 1
         try:
             await asyncio.wait_for(self.wps.send_to_group(group, payload, content_type="application/json"),
                                    timeout=PUBLISH_TIMEOUT_S)  # the SDK serializes dicts

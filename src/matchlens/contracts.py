@@ -223,3 +223,11 @@ def frames_group(match_id: str) -> str:
 
 def state_group(match_id: str) -> str:
     return f"m.{match_id}.state"
+
+
+RECORDINGS_CONTAINER = "replays"
+
+
+def recording_blob(match_id: str) -> str:
+    """Append blob holding every live tick broadcast for a match, one JSON line each."""
+    return f"live/{match_id}.ndjson"
