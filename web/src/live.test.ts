@@ -24,6 +24,12 @@ describe("recordedPace", () => {
     expect(recordedPace(ticks(30, 3, 1.5).reverse())).toEqual({ pace: 2, newest: 87 });
   });
 
+  it("ignores ticks recorded again after an interpreter restart", () => {
+    const first = ticks(30, 3, 1.5);
+    const replayed = first.slice(-3).map((t) => ({ ...t, wallMs: t.wallMs! + 60_000 }));
+    expect(recordedPace([...first, ...replayed])).toEqual({ pace: 2, newest: 87 });
+  });
+
   it("needs a few ticks to go on", () => {
     expect(recordedPace(ticks(2, 3, 1))).toBeNull();
   });

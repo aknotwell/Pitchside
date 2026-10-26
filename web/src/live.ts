@@ -81,10 +81,12 @@ function onFrames(f: LiveFeed, incoming: Frame[]) {
 }
 
 /** The simulator's pace over a recording's last ten ticks, from their server clocks (older recordings
- *  lack them, and their ticks are taken as a second apart), and the newest match time recorded. */
+ *  lack them, and their ticks are taken as a second apart), and the newest match time recorded. A tick
+ *  recorded again after an interpreter restart counts once, at its first server clock. */
 export function recordedPace(ticks: Tick[]): { pace: number; newest: number } | null {
   const ends = ticks.flatMap((t) => (t.frames?.length ? [{ t: t.frames[t.frames.length - 1].t_s, wallMs: t.wallMs }] : []))
-    .sort((a, b) => a.t - b.t);
+    .sort((a, b) => a.t - b.t)
+    .filter((e, i, sorted) => i === 0 || e.t !== sorted[i - 1].t);
   const k = Math.min(10, ends.length - 1);
   if (k < 2) return null;
   const a = ends[ends.length - 1 - k], b = ends[ends.length - 1];
