@@ -132,11 +132,13 @@ async def match(match_id: str, request: Request):
 
 
 @app.get("/api/matches/{match_id}/cues")
-async def cues(match_id: str, request: Request, persona: str = Query("casual"), lang: str = Query("en")):
+async def cues(match_id: str, request: Request, persona: str = Query("casual"), lang: str = Query("en"),
+               limit: int = Query(60, ge=1, le=1000)):
+    """The newest `limit` cues, oldest first. The live player asks for the whole match so it can scrub back."""
     sql = ("SELECT * FROM c WHERE (c.persona = @p OR c.persona = 'all') AND (c.lang = @l OR c.lang = 'all') "
            "ORDER BY c.display_at_s DESC")
     items = await query(request.app.state.db["cues"], sql, [{"name": "@p", "value": persona}, {"name": "@l", "value": lang}],
-                        pk=match_id, limit=60)
+                        pk=match_id, limit=limit)
     return {"cues": list(reversed(items))}
 
 

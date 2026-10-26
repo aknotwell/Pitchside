@@ -11,8 +11,8 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   matches: () => j<{ matches: MatchSummary[]; now: number }>("/api/matches"),
   match: (id: string) => j<MatchState>(`/api/matches/${id}`),
-  cues: (id: string, persona: Persona, lang: Lang) =>
-    j<{ cues: Cue[] }>(`/api/matches/${id}/cues?persona=${persona}&lang=${lang}`),
+  cues: (id: string, persona: Persona, lang: Lang, limit: number) =>
+    j<{ cues: Cue[] }>(`/api/matches/${id}/cues?persona=${persona}&lang=${lang}&limit=${limit}`),
   negotiate: (id: string, persona: Persona, lang: Lang) =>
     j<{ url: string }>(`/api/negotiate?matchId=${encodeURIComponent(id)}&persona=${persona}&lang=${lang}`),
   start: (speed: number, periodMin: number) =>

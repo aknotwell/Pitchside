@@ -94,3 +94,20 @@ async def test_a_burst_of_joiners_shares_one_download_and_new_ticks_are_never_mi
         FakeBlobClient.blobs[KEY] = FIRST + b'{"type":"tick","frames":[{"t_s":1.0}]}\n'
         later = await c.get("/api/matches/m00042-abc/recording")
         assert later.content == FakeBlobClient.blobs[KEY] and FakeBlobClient.downloads == 2
+
+
+class FakeCues:
+    def __init__(self, n: int):
+        self.docs = [{"id": f"c{i}", "display_at_s": float(i), "_etag": "x"} for i in range(n)]
+
+    async def query_items(self, sql, parameters=None, partition_key=None):
+        for d in reversed(self.docs):  # newest first, as the query orders them
+            yield d
+
+
+def test_cue_history_is_the_newest_60_unless_more_are_asked_for(client, monkeypatch):
+    monkeypatch.setattr(api.app.state, "db", {"cues": FakeCues(150)}, raising=False)
+    times = lambda r: [c["display_at_s"] for c in r.json()["cues"]]  # noqa: E731
+    assert times(client.get("/api/matches/m1/cues")) == [float(i) for i in range(90, 150)]
+    assert times(client.get("/api/matches/m1/cues?limit=1000")) == [float(i) for i in range(150)]
+    assert client.get("/api/matches/m1/cues?limit=5000").status_code == 422

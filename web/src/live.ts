@@ -9,6 +9,9 @@ import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona } from "./types";
  * explanations written by agents (a few seconds of latency) land exactly on the play they explain. */
 export const BROADCAST_DELAY_S = 10;
 
+/** Cues to load on joining: the API's most, enough for every cue of a whole match, so scrubbing back keeps its explanations. */
+const CUE_HISTORY = 1000;
+
 /** The simulator's position as last heard: at wall time `wall` it was at `matchT`, moving at `speed`. */
 interface Clock { matchT: number; wall: number; speed: number }
 interface Heard { wall: number; t: number }
@@ -131,7 +134,7 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
     f.late = [];
     (async () => {
       try {
-        const hist = await api.cues(matchId, persona, lang).catch(() => ({ cues: [] as Cue[] }));
+        const hist = await api.cues(matchId, persona, lang, CUE_HISTORY).catch(() => ({ cues: [] as Cue[] }));
         for (const c of hist.cues) f.byId.set(c.id, c);
         const { url } = await api.negotiate(matchId, persona, lang);
         if (stopped) return;
