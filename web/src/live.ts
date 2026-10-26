@@ -30,9 +30,10 @@ interface LiveFeed extends Feed {
   /** Pace read from the recording, used until the socket has been heard long enough to measure it. */
   paceHint: number;
   byId: Map<string, Cue>;
-  /** Recording loads asked for (one on joining, one more each time the socket comes back after a
-   *  drop), how many of those the last successful load covered, and the bytes of the recording
-   *  loaded so far: later loads ask only for what follows. */
+  /** Recording loads asked for (one on joining, and one more for each gap only the recording holds:
+   *  the socket reopening after a drop, or a new viewer's or language's socket replacing the last),
+   *  how many of those the last successful load covered, and how many bytes of the recording the
+   *  loads have read: the next asks only for what follows. */
   recording: { wanted: number; loaded: number; size: number };
 }
 
@@ -99,9 +100,9 @@ export function recordedPace(ticks: Tick[]): { pace: number; newest: number } | 
   return { pace: pace(b.t - a.t, wallS), newest: b.t };
 }
 
-/** Everything broadcast before this viewer joined, or since the last load, and whether it loaded. The
- *  tail also gives a first estimate of the simulator's pace from the ticks' server clocks, sparing the
- *  socket estimate a slow warm-up. */
+/** Everything broadcast before this viewer joined, or since the last load, and whether it loaded. A
+ *  load long enough also gives an estimate of the simulator's pace from the ticks' server clocks,
+ *  sparing the socket estimate a slow warm-up. */
 async function loadRecording(f: LiveFeed, matchId: string, signal: AbortSignal): Promise<boolean> {
   try {
     const from = f.recording.size;
@@ -143,9 +144,9 @@ const sleep = (s: number) => new Promise((resolve) => setTimeout(resolve, s * 10
 
 /** Loads the recording once the socket is open (whatever airs while it downloads then arrives on the
  *  socket), and what was recorded since after each reconnect, since ticks sent while the socket was
- *  down only exist in the recording. While connected it loads the tail every minute too, so that
- *  reconnect asks for a minute or so of ticks. Retries with back-off while the match is live, until `signal` aborts, which also
- *  cancels a download in progress. */
+ *  down only exist in the recording. While connected it loads the tail every minute too, so a
+ *  reconnect asks for a minute or so of ticks. Retries with back-off while the match is live, until
+ *  `signal` aborts, which also cancels a download in progress. */
 export async function keepLoadingRecording(f: LiveFeed, matchId: string, signal: AbortSignal) {
   let recheckAt = Infinity;
   for (let failures = 0; !signal.aborted;) {
