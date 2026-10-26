@@ -175,13 +175,13 @@ function onMessage(f: LiveFeed, data: unknown) {
   } catch { /* ignore non-JSON */ }
 }
 
-/** One viewer's live connection: a socket kept open across drops, with their cue history merged on
- *  each open. Returns its stop. Nothing from a stopped connection (a late history fetch, a closing
- *  socket's last messages) reaches the feed, which by then belongs to the viewer or language picked next. */
+/** One viewer's live connection: a socket kept open across drops, with their cue history merged once
+ *  it opens and the cues each reopen missed merged as late ones. Returns its stop. Nothing from a
+ *  stopped connection (a late history fetch, a closing socket's last messages) reaches the feed, which
+ *  by then belongs to the viewer or language picked next. */
 export function connect(f: LiveFeed, matchId: string, persona: Persona, lang: Lang): () => void {
   let stopped = false;
   let opens = 0;
-  let hasHistory = false;
   f.byId = new Map();
   f.late = [];
   const stopSocket = keepConnected({
@@ -190,11 +190,10 @@ export function connect(f: LiveFeed, matchId: string, persona: Persona, lang: La
     open: (url) => new WebSocket(url),
   }, {
     onMessage: (data) => { if (!stopped) onMessage(f, data); },
-    // The first merge is the viewer's history. Later ones aired while the socket was down: late, like one the socket brings after its moment
-    onCues: (cues) => {
+    // A late cue aired while the socket was down, like one the socket brings after its moment
+    onCues: (cues, late) => {
       if (stopped) return;
-      for (const c of cues) if (!f.byId.has(c.id)) { f.byId.set(c.id, c); if (hasHistory) f.late.push(c); }
-      hasHistory = true;
+      for (const c of cues) if (!f.byId.has(c.id)) { f.byId.set(c.id, c); if (late) f.late.push(c); }
     },
     onConnected: (up) => {
       if (stopped) return;

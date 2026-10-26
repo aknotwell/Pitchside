@@ -286,7 +286,7 @@ describe("connect", () => {
   }
   const cue = (id: string) => ({ id, display_at_s: 1 }) as Cue;
   const settle = () => new Promise((r) => setTimeout(r, 0));
-  afterEach(() => { vi.unstubAllGlobals(); FakeSocket.all = []; });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); FakeSocket.all = []; });
 
   it("a viewer switched away from never writes their late cue history", async () => {
     vi.stubGlobal("WebSocket", FakeSocket);
@@ -347,7 +347,75 @@ describe("connect", () => {
     expect(f.late.map((c) => c.id)).toEqual(["missed"]);
     expect(api.cues).toHaveBeenCalledTimes(2);
     expect(f.recording.wanted).toBe(2);
-    vi.useRealTimers();
+  });
+
+  /** Opens the first socket, drops it, and opens the reconnect. */
+  async function dropAndReconnect() {
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0].onopen?.();
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0].onclose?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    FakeSocket.all[1].onopen?.();
+    await vi.advanceTimersByTimeAsync(0);
+  }
+
+  it("the join's history counts as history even when the reconnect's cues come back first", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("WebSocket", FakeSocket);
+    let arrive: (v: { cues: Cue[] }) => void = () => {};
+    vi.mocked(api.cues).mockReset().mockReturnValueOnce(new Promise((r) => { arrive = r; }))
+      .mockResolvedValue({ cues: [cue("before"), cue("missed")] });
+    vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = liveFeed();
+    connect(f, "m1", "casual", "en");
+    await dropAndReconnect();
+    expect(f.late).toEqual([]);
+
+    arrive({ cues: [cue("before")] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect([...f.byId.keys()]).toEqual(["before", "missed"]);
+    expect(f.late.map((c) => c.id)).toEqual(["missed"]);
+  });
+
+  it("a failed history fetch is retried until it lands, and the cues a later drop missed are still late", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("WebSocket", FakeSocket);
+    vi.mocked(api.cues).mockReset().mockRejectedValueOnce(new Error("503")).mockRejectedValueOnce(new Error("503"))
+      .mockResolvedValueOnce({ cues: [cue("before")] }).mockResolvedValue({ cues: [cue("before"), cue("missed")] });
+    vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = liveFeed();
+    connect(f, "m1", "casual", "en");
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0].onopen?.();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(api.cues).toHaveBeenCalledTimes(3);
+    expect([...f.byId.keys()]).toEqual(["before"]);
+
+    FakeSocket.all[0].onclose?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    FakeSocket.all[1].onopen?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.late.map((c) => c.id)).toEqual(["missed"]);
+  });
+
+  it("stops retrying a failed history fetch once the viewer leaves", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("WebSocket", FakeSocket);
+    vi.mocked(api.cues).mockReset().mockRejectedValue(new Error("503"));
+    vi.mocked(api.negotiate).mockResolvedValue({ url: "ws://x" });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stop = connect(liveFeed(), "m1", "casual", "en");
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0].onopen?.();
+    await vi.advanceTimersByTimeAsync(10_000);
+    const calls = vi.mocked(api.cues).mock.calls.length;
+    expect(calls).toBeGreaterThan(2);
+    stop();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(api.cues).toHaveBeenCalledTimes(calls);
   });
 
   it("a viewer or language switch asks for what aired between the two sockets, and joining doesn't", async () => {
