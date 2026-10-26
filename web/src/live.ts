@@ -29,16 +29,15 @@ interface LiveFeed extends Feed {
   /** Pace read from the recording, used until the socket has been heard long enough to measure it. */
   paceHint: number;
   byId: Map<string, Cue>;
-  recording: "none" | "loading" | "loaded";
 }
 
 const byT = (f: Frame) => f.t_s;
 const byClock = (s: MatchState) => s.clockS;
 const wallNow = () => performance.now() / 1000;
 
-function liveFeed(): LiveFeed {
+export function liveFeed(): LiveFeed {
   const f: LiveFeed = {
-    connected: false, frames: [], states: [], meta: null, clock: null, heard: [], paceHint: 1, byId: new Map(), late: [], recording: "none",
+    connected: false, frames: [], states: [], meta: null, clock: null, heard: [], paceHint: 1, byId: new Map(), late: [],
     get cues() { return f.byId.values(); },
     shows: () => true,
     timeline: (now) => timelineAt(f, now),
@@ -89,8 +88,7 @@ export function recordedPace(ticks: Tick[]): { pace: number; newest: number } | 
 
 /** Everything broadcast before this viewer joined. The tail also gives a first estimate of the simulator's
  *  pace from the ticks' server clocks, sparing the socket estimate a slow warm-up. */
-async function loadRecording(f: LiveFeed, matchId: string) {
-  f.recording = "loading";
+async function loadRecording(f: LiveFeed, matchId: string): Promise<boolean> {
   try {
     const r = await fetch(`${API}/api/matches/${matchId}/recording`);
     if (!r.ok) throw new Error(`${r.status}`);
@@ -104,10 +102,24 @@ async function loadRecording(f: LiveFeed, matchId: string) {
       if (!f.clock) f.clock = { matchT: recorded.newest, wall: wallNow(), speed: f.paceHint };
       else if (f.heard.length < 2 || f.clock.wall - f.heard[0].wall < 3) f.clock = { ...f.clock, speed: f.paceHint };
     }
-    f.recording = "loaded";
+    return true;
   } catch (e) {
-    f.recording = "none";  // retried on the next socket open
     console.warn("recording load failed", e);
+    return false;
+  }
+}
+
+/** Seconds to wait after each failed recording load. At kick-off a 404 is normal: nothing is recorded yet. */
+const RECORDING_RETRY_S = [2, 5, 10, 20];
+const sleep = (s: number) => new Promise((resolve) => setTimeout(resolve, s * 1000));
+
+/** Loads the recording once the socket is open (whatever airs while it downloads then arrives on the
+ *  socket), retrying with back-off while the match is live, until it loads or `active` turns false. */
+export async function keepLoadingRecording(f: LiveFeed, matchId: string, active: () => boolean) {
+  for (let failures = 0; active();) {
+    if (!f.connected) { await sleep(0.2); continue; }
+    if (await loadRecording(f, matchId) || f.states[f.states.length - 1]?.ended) return;
+    await sleep(RECORDING_RETRY_S[Math.min(failures++, RECORDING_RETRY_S.length - 1)]);
   }
 }
 
@@ -118,11 +130,13 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
     if (!matchId) return;
     const f = liveFeed();
     feed.current = f;
+    let stopped = false;
     api.match(matchId).then((st) => {
       f.meta = st.meta ?? null;
       f.states = mergeByTime(f.states, [st], byClock);
     }).catch(() => {});
-    return () => { if (feed.current === f) feed.current = null; };
+    void keepLoadingRecording(f, matchId, () => !stopped);
+    return () => { stopped = true; if (feed.current === f) feed.current = null; };
   }, [matchId]);
 
   useEffect(() => {
@@ -139,11 +153,7 @@ export function useLiveMatch(matchId: string | null, persona: Persona, lang: Lan
         const { url } = await api.negotiate(matchId, persona, lang);
         if (stopped) return;
         ws = new WebSocket(url);
-        ws.onopen = () => {
-          f.connected = true;
-          // Socket first, then the recording: whatever airs while it downloads arrives on the socket
-          if (f.recording === "none") void loadRecording(f, matchId);
-        };
+        ws.onopen = () => { f.connected = true; };
         ws.onclose = () => { f.connected = false; };
         ws.onmessage = (ev) => {
           try {
