@@ -181,7 +181,7 @@ function Main({ params }: { params: URLSearchParams }) {
           {tab === "producer" && <Producer />}
         </aside>
       </main>
-      <WhyDrawer cue={why} onClose={() => setWhy(null)} />
+      <WhyDrawer cue={why} persona={persona} lang={lang} onPersona={setPersona} onClose={() => setWhy(null)} />
       <footer>
         Synthetic data only: a fictional league, clubs and players. Overlays marked "AI" are model-written and code-verified.
         Not affiliated with any league or club.

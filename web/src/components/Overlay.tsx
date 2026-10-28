@@ -2,7 +2,7 @@ import { useState } from "react";
 import { API } from "../api";
 import type { Cue } from "../types";
 
-function badge(c: Cue) {
+export function badge(c: Cue) {
   if (c.source === "agent") return <span className="badge ai" title="Written by an agent, every number verified by code">AI · verified</span>;
   if (c.source === "fallback") return <span className="badge fb" title="Deterministic template (model unavailable or draft rejected)">Template</span>;
   return <span className="badge data" title="Computed directly from the event stream">Data</span>;
