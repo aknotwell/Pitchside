@@ -64,6 +64,14 @@ def test_verifier_rejects_invented_numbers_names_and_keys():
         assert needle in text
 
 
+def test_verifier_tells_a_long_draft_how_long_to_be():
+    m = moment()
+    long = Explanation(variants=[Variant(persona=p, lang=lang, title="Press on", evidence_keys=["ppda_8m"],
+                                         text="PPDA fell from 11.7 to 4.5. " + "x" * 280) for p, lang in SEGS])
+    problems = verify(long, m, SEGS, set()).problems
+    assert any("text is 308 characters, over the 260 limit: rewrite it under 230" in p for p in problems)
+
+
 async def run(story, m):
     return await story.tell(m)
 
