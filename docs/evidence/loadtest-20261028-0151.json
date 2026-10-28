@@ -1,0 +1,562 @@
+{
+ "at": "2026-10-28T01:51:58Z",
+ "matches": 10,
+ "speed": 6.0,
+ "period_min": 10.0,
+ "watched": 3,
+ "peak_replicas": {
+  "interpreter": 4,
+  "storyteller": 6
+ },
+ "latency": {
+  "template (hot path)": {
+   "n": 54,
+   "p50_ms": 237,
+   "p95_ms": 386,
+   "max_ms": 10157,
+   "mean_ms": 417
+  },
+  "agent (warm/cold path)": {
+   "n": 12,
+   "p50_ms": 11832,
+   "p95_ms": 21533,
+   "max_ms": 37138,
+   "mean_ms": 14214
+  },
+  "fallback": {
+   "n": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "max_ms": null,
+   "mean_ms": null
+  }
+ },
+ "samples": [
+  {
+   "t_s": 28,
+   "interpreter": 3,
+   "storyteller": 1
+  },
+  {
+   "t_s": 45,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 61,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 77,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 94,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 110,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 127,
+   "interpreter": 4,
+   "storyteller": 1
+  },
+  {
+   "t_s": 143,
+   "interpreter": 4,
+   "storyteller": 2
+  },
+  {
+   "t_s": 159,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 176,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 192,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 209,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 225,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 241,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 258,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 275,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 291,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 308,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 324,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 340,
+   "interpreter": 4,
+   "storyteller": 6
+  },
+  {
+   "t_s": 357,
+   "interpreter": 4,
+   "storyteller": 6
+  }
+ ],
+ "server_latency": [
+  {
+   "source": "template",
+   "n": 158,
+   "p50": 204,
+   "p95": 357,
+   "p99": 9046
+  },
+  {
+   "source": "agent",
+   "n": 321,
+   "p50": 13170,
+   "p95": 38611,
+   "p99": 39224
+  },
+  {
+   "source": "fallback",
+   "n": 15,
+   "p50": 13963,
+   "p95": 33428,
+   "p99": 33428
+  }
+ ],
+ "cues": [
+  {
+   "match": "m02310-1cbk62f",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 245.62744140625
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "card",
+   "source": "template",
+   "latency_ms": 259.28076171875
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 10157.187744140625
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 250.641845703125
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 121.271728515625
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 85.6572265625
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 319.3544921875
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 144.611328125
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 133.30322265625
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 280.571044921875
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 303.4833984375
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 386.307373046875
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "shot",
+   "source": "template",
+   "latency_ms": 324.34375
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 247.15966796875
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 108.368408203125
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "goal",
+   "source": "template",
+   "latency_ms": 306.583251953125
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 236.76806640625
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "lower_third.goal_story",
+   "source": "agent",
+   "latency_ms": 10161.114013671875
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 271.03125
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 9462.89794921875
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 89.37158203125
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 11832.292724609375
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 240.82373046875
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 198.7109375
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "graphic.momentum_swing",
+   "source": "agent",
+   "latency_ms": 21533.318115234375
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 223.52587890625
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 235.899169921875
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 293.716796875
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 280.71728515625
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 37138.4384765625
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "goal",
+   "source": "template",
+   "latency_ms": 328.624267578125
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 331.43701171875
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 175.94482421875
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 442.0908203125
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 196.678466796875
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "lower_third.goal_story",
+   "source": "agent",
+   "latency_ms": 13617.252685546875
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 221.504150390625
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 106.155029296875
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 109.1611328125
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 116.343505859375
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 353.865966796875
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 353.926513671875
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "card",
+   "source": "template",
+   "latency_ms": 181.97216796875
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 246.97265625
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "graphic.momentum_swing",
+   "source": "agent",
+   "latency_ms": 11431.23388671875
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 302.947998046875
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 275.184814453125
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 228.64111328125
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 233.75634765625
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 240.314208984375
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 311.85205078125
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 146.1865234375
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 150.81005859375
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 205.57177734375
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 211.678955078125
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "player_tag.speed",
+   "source": "template",
+   "latency_ms": 224.809326171875
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 179.297607421875
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "goal",
+   "source": "template",
+   "latency_ms": 273.277587890625
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "pass.quality",
+   "source": "template",
+   "latency_ms": 79.48046875
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "goal",
+   "source": "template",
+   "latency_ms": 385.8369140625
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "substitution",
+   "source": "template",
+   "latency_ms": 170.6552734375
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "lower_third.goal_story",
+   "source": "agent",
+   "latency_ms": 7154.52294921875
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "lower_third.goal_story",
+   "source": "agent",
+   "latency_ms": 6889.929443359375
+  },
+  {
+   "match": "m02310-1cbk62f",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 8573.988037109375
+  },
+  {
+   "match": "m02309-1dhszqh",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 12254.275390625
+  },
+  {
+   "match": "m02308-9z2db4b",
+   "template": "panel.recap",
+   "source": "agent",
+   "latency_ms": 20520.36572265625
+  }
+ ]
+}

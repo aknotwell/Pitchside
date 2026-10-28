@@ -116,7 +116,7 @@
     }
   },
   "loadtest": {
-    "at": "2026-10-28T01:26:10Z",
+    "at": "2026-10-28T01:51:58Z",
     "matches": 10,
     "speed": 6.0,
     "peak_replicas": {
@@ -125,25 +125,25 @@
     },
     "latency": {
       "template (hot path)": {
-        "n": 58,
-        "p50_ms": 291,
-        "p95_ms": 5911,
-        "max_ms": 16053,
-        "mean_ms": 1165
+        "n": 54,
+        "p50_ms": 237,
+        "p95_ms": 386,
+        "max_ms": 10157,
+        "mean_ms": 417
       },
       "agent (warm/cold path)": {
-        "n": 7,
-        "p50_ms": 15786,
-        "p95_ms": 36387,
-        "max_ms": 36387,
-        "mean_ms": 19740
+        "n": 12,
+        "p50_ms": 11832,
+        "p95_ms": 21533,
+        "max_ms": 37138,
+        "mean_ms": 14214
       },
       "fallback": {
-        "n": 1,
-        "p50_ms": 13511,
-        "p95_ms": 13511,
-        "max_ms": 13511,
-        "mean_ms": 13511
+        "n": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "mean_ms": null
       }
     }
   },
@@ -173,7 +173,7 @@
   },
   "sources": {
     "realism": "docs/REALISM.md",
-    "loadtest": "docs/evidence/loadtest-20261028-0126.json",
+    "loadtest": "docs/evidence/loadtest-20261028-0151.json",
     "eval": "docs/evidence/eval-20261009-0832.json"
   }
 }
