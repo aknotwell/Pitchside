@@ -163,6 +163,12 @@
       "coherence_mean": true,
       "agent_rate": true,
       "p95_ms": true
+    },
+    "thresholds": {
+      "groundedness_mean": 4.0,
+      "coherence_mean": 3.5,
+      "agent_rate": 0.85,
+      "p95_ms": 30000
     }
   },
   "sources": {

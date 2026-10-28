@@ -438,7 +438,7 @@ def test_scorecard_sums_the_last_day_of_runs(client, monkeypatch):
     body = r.json()
     assert r.headers["cache-control"] == "public, max-age=30"
     assert body["generated_at"] == now and body["window_h"] == 24
-    assert body["runs"] == {"total": 4, "agent": 1, "partial": 1, "fallback": 1, "skipped": 1, "resumed": 1,
+    assert body["runs"] == {"total": 3, "agent": 1, "partial": 1, "fallback": 1, "skipped": 1, "resumed": 1,
                             "p50_ms": 200, "p95_ms": 300}
     assert body["verifier"] == {"checked": 6, "rejected": 2, "retried_ok": 1}
     assert body["matches"] == {"live": 1, "finished_24h": 1}  # the quiet unended match crashed

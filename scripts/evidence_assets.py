@@ -7,6 +7,7 @@ Reads docs/REALISM.md and docs/evidence/{loadtest,eval}-*.json; writes web/publi
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from datetime import datetime
@@ -16,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 REALISM = Path("docs/REALISM.md")
 OUT = Path("web/public/evidence.json")
+EVALUATE = Path("scripts/evaluate.py")
 
 
 def section(md: str, heading: str) -> str:
@@ -46,6 +48,13 @@ def newest(kind: str) -> Path:
     return max((ROOT / "docs/evidence").glob(f"{kind}-*.json")).relative_to(ROOT)
 
 
+def eval_thresholds() -> dict:
+    """The eval gate's thresholds, read from evaluate.py without importing it (it needs Azure packages)."""
+    tree = ast.parse((ROOT / EVALUATE).read_text())
+    return next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id == "THRESHOLDS" for t in n.targets))
+
+
 def main() -> None:
     loadtest_path, eval_path = newest("loadtest"), newest("eval")
     load = json.loads((ROOT / loadtest_path).read_text())
@@ -54,7 +63,8 @@ def main() -> None:
     out = {
         "realism": realism((ROOT / REALISM).read_text()),
         "loadtest": {k: load[k] for k in ("at", "matches", "speed", "peak_replicas", "latency")},
-        "eval": {"at": stamp.strftime("%Y-%m-%dT%H:%M:00Z"), "summary": ev["summary"], "checks": ev["checks"]},
+        "eval": {"at": stamp.strftime("%Y-%m-%dT%H:%M:00Z"), "summary": ev["summary"], "checks": ev["checks"],
+                 "thresholds": eval_thresholds()},
         "sources": {"realism": str(REALISM), "loadtest": str(loadtest_path), "eval": str(eval_path)},
     }
     (ROOT / OUT).write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n")

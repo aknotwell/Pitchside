@@ -544,7 +544,7 @@ def score_runs(runs: list[dict]) -> dict:
     sources = [r.get("source") for r in runs]
     verifier = [s for r in runs for s in r.get("steps") or [] if s.get("step") == "verifier"]
     return {
-        "runs": {"total": len(runs), "agent": sources.count("agent"), "partial": sources.count("partial"),
+        "runs": {"total": sum(1 for r in runs if not r.get("skipped")), "agent": sources.count("agent"), "partial": sources.count("partial"),
                  "fallback": sources.count("fallback"), "skipped": sum(1 for r in runs if r.get("skipped")),
                  "resumed": sum(1 for r in runs if r.get("resumed_from")),
                  **{f"p{p}_ms": percentile([r["ms"] for r in runs if not r.get("skipped") and r.get("ms") is not None],
