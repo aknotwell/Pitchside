@@ -25,10 +25,11 @@ FIRST = b'{"type":"tick","frames":[{"t_s":0.0}]}\n{"type":"tick","frames":[]}\n'
 class FakeContainer:
     def __init__(self, docs=None, rows=None):
         self.docs = {d["id"]: dict(d) for d in docs or []}
-        self.rows, self.queries, self.etag = rows or [], 0, 0
+        self.rows, self.queries, self.etag, self.params = rows or [], 0, 0, []
 
     async def query_items(self, sql, **kw):
         self.queries += 1
+        self.params.append({p["name"]: p["value"] for p in kw.get("parameters") or []})
         for r in self.rows:
             yield r
 
@@ -117,7 +118,7 @@ def state(monkeypatch):
     app.state.wps = FakeWps()
     for limiter in (api_mod.reads, api_mod.asks, api_mod.starts):
         limiter.hits.clear()
-    for c in (api_mod.match_list, api_mod.replay_list, api_mod.ops_view):
+    for c in (api_mod.match_list, api_mod.replay_list, api_mod.ops_view, api_mod.scorecard_view):
         c.clear()
     monkeypatch.setattr(api_mod, "recording_cache", api_mod.RecordingCache())
 
@@ -382,3 +383,79 @@ def test_cached_loads_once_under_concurrency():
         c = Cached(5)
         return await asyncio.gather(*(c.get(load) for _ in range(20)))
     assert asyncio.run(go()) == [1] * 20 and len(calls) == 1
+
+
+def test_moment_detail_has_the_moment_its_run_and_every_cue(client):
+    mid = "m1-e00100-goal"
+    steps = [{"step": "editor", "persona": None, "attempt": 0, "t_ms": 0, "ms": 0, "outcome": "aired", "detail": None}]
+    app.state.db["moments"] = FakeContainer([{"id": mid, "matchId": "m1", "kind": "goal", "_etag": "x"}])
+    app.state.db["runs"] = FakeContainer([{"id": f"run-{mid}", "matchId": "m1", "type": "storyRun", "steps": steps,
+                                           "_ts": 1}])
+    cue_docs = [{"id": f"{mid}-{p}-{lang}", "moment_id": mid, "persona": p, "lang": lang}
+                for p in ("analyst", "casual") for lang in ("en", "ja")]
+    app.state.db["cues"] = FakeContainer(rows=[{**c, "_rid": "r"} for c in cue_docs])
+    body = client.get(f"/api/matches/m1/moments/{mid}").json()
+    assert body == {"moment": {"id": mid, "matchId": "m1", "kind": "goal"},
+                    "run": {"id": f"run-{mid}", "matchId": "m1", "type": "storyRun", "steps": steps},
+                    "cues": cue_docs}
+    assert app.state.db["cues"].params == [{"@m": mid}]
+
+
+def test_moment_detail_is_partial_while_the_storyteller_works_and_404_when_unknown(client):
+    app.state.db["moments"] = FakeContainer([{"id": "m1-e2-goal", "matchId": "m1"}])
+    assert client.get("/api/matches/m1/moments/m1-e2-goal").json() == {
+        "moment": {"id": "m1-e2-goal", "matchId": "m1"}, "run": None, "cues": []}
+    assert client.get("/api/matches/m1/moments/m1-e9-goal").status_code == 404
+
+
+def verifier(persona, attempt, outcome):
+    return {"step": "verifier", "persona": persona, "attempt": attempt, "t_ms": 5, "ms": 0, "outcome": outcome,
+            "detail": None}
+
+
+def test_scorecard_sums_the_last_day_of_runs(client, monkeypatch):
+    now = 1_800_000_000.0
+    monkeypatch.setattr(api_mod.time, "time", lambda: now)
+    editor = {"step": "editor", "persona": None, "attempt": 0, "t_ms": 0, "ms": 0, "outcome": "aired", "detail": None}
+    runs = [  # newest first, as the query orders them
+        {"moment_id": "a", "matchId": "m1", "kind": "goal", "source": "agent", "ms": 100, "at": now - 10,
+         "resumed_from": None, "skipped": None, "personas": {"analyst": "agent"},
+         "steps": [editor, verifier("analyst", 0, "accepted"), verifier("casual", 0, "accepted")]},
+        {"moment_id": "b", "matchId": "m2", "kind": "big_chance", "source": "partial", "ms": 300, "at": now - 20,
+         "resumed_from": None, "skipped": None, "personas": {"analyst": "agent", "casual": "fallback"},
+         "steps": [editor, verifier("analyst", 0, "rejected"), verifier("casual", 0, "rejected"),
+                   verifier("analyst", 1, "accepted"), verifier("casual", 1, "fallback")]},
+        {"moment_id": "c", "matchId": "m1", "kind": "pressing_surge", "source": None, "ms": 1, "at": now - 30,
+         "resumed_from": None, "skipped": "overlay budget", "personas": {},
+         "steps": [{**editor, "outcome": "skipped", "detail": "overlay budget"}]},
+        {"moment_id": "d", "matchId": "m2", "kind": "goal", "source": "fallback", "ms": 200, "at": now - 40,
+         "resumed_from": "cp-1", "skipped": None, "personas": {"analyst": "fallback"}},
+    ]
+    app.state.db["runs"] = FakeContainer([{"id": "chaos", "matchId": "_ops", "armed": True, "_etag": "e"}], rows=runs)
+    app.state.db["matchState"] = FakeContainer(rows=[
+        {"ended": False, "updated": now - 10}, {"ended": False, "updated": now - 1000}, {"ended": True, "updated": now - 5000}])
+    r = client.get("/api/scorecard")
+    body = r.json()
+    assert r.headers["cache-control"] == "public, max-age=30"
+    assert body["generated_at"] == now and body["window_h"] == 24
+    assert body["runs"] == {"total": 4, "agent": 1, "partial": 1, "fallback": 1, "skipped": 1, "resumed": 1,
+                            "p50_ms": 200, "p95_ms": 300}
+    assert body["verifier"] == {"checked": 6, "rejected": 2, "retried_ok": 1}
+    assert body["matches"] == {"live": 1, "finished_24h": 1}  # the quiet unended match crashed
+    assert body["chaos"] == {"id": "chaos", "matchId": "_ops", "armed": True}
+    assert [x["moment_id"] for x in body["recent"]] == ["a", "b", "c"]  # "d" predates the agent trace
+    assert set(body["recent"][0]) == {"moment_id", "matchId", "kind", "source", "ms", "at", "resumed_from", "personas", "steps"}
+    assert app.state.db["runs"].params == [{"@since": now - 86400}]
+
+    for _ in range(20):
+        client.get("/api/scorecard")
+    assert app.state.db["runs"].queries == 1 and app.state.db["matchState"].queries == 1
+
+
+def test_scorecard_with_no_runs_yet(client):
+    app.state.db["runs"] = FakeContainer()
+    app.state.db["matchState"] = FakeContainer()
+    body = client.get("/api/scorecard").json()
+    assert body["runs"]["total"] == 0 and body["runs"]["p50_ms"] is None and body["runs"]["p95_ms"] is None
+    assert body["verifier"] == {"checked": 0, "rejected": 0, "retried_ok": 0}
+    assert body["chaos"] == {"armed": False} and body["recent"] == []

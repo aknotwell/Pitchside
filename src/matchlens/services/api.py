@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import logging
+import math
 import os
 import re
 import time
@@ -125,6 +126,8 @@ global_starts = SharedBudget("starts", 12, 3600)
 LIST_TTL_S = 2.0
 LIST_CACHE = {"Cache-Control": f"public, max-age={int(LIST_TTL_S)}"}
 match_list, replay_list, ops_view = Cached(LIST_TTL_S), Cached(LIST_TTL_S), Cached(LIST_TTL_S)
+scorecard_view = Cached(30.0)
+LIVE_QUIET_S = 300  # a match that hasn't ended but has sent nothing for this long has crashed (as the web player decides)
 
 
 @asynccontextmanager
@@ -232,6 +235,29 @@ async def moments(match_id: str, request: Request):
     items = await query(request.app.state.db["moments"], "SELECT * FROM c ORDER BY c.clock_s DESC", pk=match_id, limit=50)
     runs = await query(request.app.state.db["runs"], "SELECT * FROM c WHERE c.type = 'storyRun'", pk=match_id, limit=100)
     return {"moments": list(reversed(items)), "runs": runs}
+
+
+@app.get("/api/matches/{match_id}/moments/{moment_id}")
+async def moment_detail(match_id: str, moment_id: str, request: Request):
+    """One moment with its storyteller run (and agent trace) and every cue it produced."""
+    from azure.core.exceptions import ResourceNotFoundError
+
+    db = request.app.state.db
+
+    async def read(container: str, item: str):
+        try:
+            doc = await db[container].read_item(item, partition_key=match_id)
+        except ResourceNotFoundError:
+            return None
+        return {k: v for k, v in doc.items() if not k.startswith("_")}
+
+    moment, run, cue_docs = await asyncio.gather(
+        read("moments", moment_id), read("runs", f"run-{moment_id}"),
+        query(db["cues"], "SELECT * FROM c WHERE c.moment_id = @m", [{"name": "@m", "value": moment_id}],
+              pk=match_id, limit=100))
+    if moment is None and run is None and not cue_docs:
+        raise HTTPException(404, "moment not found")
+    return {"moment": moment, "run": run, "cues": cue_docs}
 
 
 @app.get("/api/negotiate")
@@ -500,6 +526,63 @@ async def ops(request: Request):
             "WHERE c.type = 'storyRun' ORDER BY c.at DESC")]
         return {"chaos": {k: v for k, v in chaos_doc.items() if not k.startswith("_")}, "runs": runs}
     return JSONResponse(await ops_view.get(load), headers=LIST_CACHE)
+
+
+def percentile(values: list[int], p: float) -> int | None:
+    """Nearest rank: the smallest value with at least ``p`` of the values at or below it."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[max(0, math.ceil(p * len(ordered)) - 1)]
+
+
+RECENT_FIELDS = ("moment_id", "matchId", "kind", "source", "ms", "at", "resumed_from", "personas", "steps")
+
+
+def score_runs(runs: list[dict]) -> dict:
+    """Storyteller runs, newest first, summed into the scorecard's run, verifier and recent sections."""
+    sources = [r.get("source") for r in runs]
+    verifier = [s for r in runs for s in r.get("steps") or [] if s.get("step") == "verifier"]
+    return {
+        "runs": {"total": len(runs), "agent": sources.count("agent"), "partial": sources.count("partial"),
+                 "fallback": sources.count("fallback"), "skipped": sum(1 for r in runs if r.get("skipped")),
+                 "resumed": sum(1 for r in runs if r.get("resumed_from")),
+                 **{f"p{p}_ms": percentile([r["ms"] for r in runs if not r.get("skipped") and r.get("ms") is not None],
+                                           p / 100) for p in (50, 95)}},
+        "verifier": {"checked": len(verifier), "rejected": sum(1 for s in verifier if s.get("outcome") == "rejected"),
+                     "retried_ok": sum(1 for s in verifier if s.get("attempt", 0) > 0 and s.get("outcome") == "accepted")},
+        "recent": [{k: r.get(k) for k in RECENT_FIELDS} for r in runs if r.get("steps")][:12],
+    }
+
+
+@app.get("/api/scorecard")
+async def scorecard(request: Request):
+    """The last 24 h of the storyteller in numbers, for the judges' scorecard. Three Cosmos reads per 30 s."""
+    db = request.app.state.db
+
+    async def load():
+        now = time.time()
+
+        async def chaos_doc():
+            try:
+                doc = await db["runs"].read_item("chaos", partition_key=OPS_PK)
+            except Exception:
+                return {"armed": False}
+            return {k: v for k, v in doc.items() if not k.startswith("_")}
+
+        runs, states, chaos_state = await asyncio.gather(
+            query(db["runs"], "SELECT c.moment_id, c.matchId, c.kind, c.source, c.ms, c.at, c.resumed_from, c.skipped, "
+                  "c.personas, c.steps FROM c WHERE c.type = 'storyRun' AND c.at > @since ORDER BY c.at DESC",
+                  [{"name": "@since", "value": now - 86400}], limit=5000),
+            query(db["matchState"], "SELECT c.ended, c._ts AS updated FROM c WHERE c.type = 'matchState' AND c._ts > @since",
+                  [{"name": "@since", "value": int(now) - 86400}], limit=1000),
+            chaos_doc())
+        return {"generated_at": now, "window_h": 24, **score_runs(runs),
+                "matches": {"live": sum(1 for m in states if not m.get("ended") and now - m["updated"] < LIVE_QUIET_S),
+                            "finished_24h": sum(1 for m in states if m.get("ended"))},
+                "chaos": chaos_state}
+
+    return JSONResponse(await scorecard_view.get(load), headers={"Cache-Control": "public, max-age=30"})
 
 
 def main() -> None:
