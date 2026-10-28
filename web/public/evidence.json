@@ -1,0 +1,173 @@
+{
+  "realism": {
+    "heldout": {
+      "matches": 64,
+      "rows": [
+        {
+          "metric": "Passes per match",
+          "real": "804",
+          "synthetic": "823",
+          "error": "+2%"
+        },
+        {
+          "metric": "Pass completion",
+          "real": "83.4%",
+          "synthetic": "82.5%",
+          "error": "-1%"
+        },
+        {
+          "metric": "Shots per match",
+          "real": "26.3",
+          "synthetic": "26.7",
+          "error": "+1%"
+        },
+        {
+          "metric": "Mean pass length (m)",
+          "real": "16.3",
+          "synthetic": "15.6",
+          "error": "-4%"
+        },
+        {
+          "metric": "Distance per 90, median (km)",
+          "real": "10.30",
+          "synthetic": "10.39",
+          "error": "+1%"
+        },
+        {
+          "metric": "Peak speed (PSV-99), median (km/h)",
+          "real": "28.3",
+          "synthetic": "27.3",
+          "error": "-3%"
+        },
+        {
+          "metric": "Sprints per 90, median",
+          "real": "8.5",
+          "synthetic": "8.6",
+          "error": "+0%"
+        }
+      ]
+    },
+    "test": {
+      "rows": [
+        {
+          "metric": "Passes per match",
+          "real": "835",
+          "interval": "788–870",
+          "synthetic": "871",
+          "inside": false
+        },
+        {
+          "metric": "Pass completion",
+          "real": "85.7%",
+          "interval": "84.9%–86.3%",
+          "synthetic": "82.6%",
+          "inside": false
+        },
+        {
+          "metric": "Shots per match",
+          "real": "28.2",
+          "interval": "25.5–31.0",
+          "synthetic": "21.9",
+          "inside": false
+        },
+        {
+          "metric": "Mean pass length (m)",
+          "real": "15.9",
+          "interval": "15.4–16.4",
+          "synthetic": "14.9",
+          "inside": false
+        },
+        {
+          "metric": "Team possessions per match (not fitted)",
+          "real": "194",
+          "interval": "188–201",
+          "synthetic": "218",
+          "inside": false
+        },
+        {
+          "metric": "Passes per team possession (not fitted)",
+          "real": "4.31",
+          "interval": "4.11–4.50",
+          "synthetic": "4.00",
+          "inside": false
+        },
+        {
+          "metric": "Distance per 90, median (km)",
+          "real": "10.45",
+          "interval": "9.72–10.99",
+          "synthetic": "10.69",
+          "inside": true
+        },
+        {
+          "metric": "Peak speed (PSV-99), median (km/h)",
+          "real": "28.1",
+          "interval": "27.4–28.8",
+          "synthetic": "27.0",
+          "inside": false
+        },
+        {
+          "metric": "Sprints per 90, median",
+          "real": "7.9",
+          "interval": "5.3–9.7",
+          "synthetic": "8.5",
+          "inside": true
+        }
+      ]
+    }
+  },
+  "loadtest": {
+    "at": "2026-10-09T07:42:48Z",
+    "matches": 10,
+    "speed": 6.0,
+    "peak_replicas": {
+      "interpreter": 4,
+      "storyteller": 4
+    },
+    "latency": {
+      "template (hot path)": {
+        "n": 23,
+        "p50_ms": 235,
+        "p95_ms": 386,
+        "max_ms": 407,
+        "mean_ms": 254
+      },
+      "agent (warm/cold path)": {
+        "n": 5,
+        "p50_ms": 16916,
+        "p95_ms": 55386,
+        "max_ms": 55386,
+        "mean_ms": 24171
+      },
+      "fallback": {
+        "n": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "mean_ms": null
+      }
+    }
+  },
+  "eval": {
+    "at": "2026-10-09T08:32:00Z",
+    "summary": {
+      "moments": 8,
+      "variants_scored": 16,
+      "groundedness_mean": 4.75,
+      "coherence_mean": 3.88,
+      "agent_rate": 0.88,
+      "p50_ms": 9445,
+      "p95_ms": 19558
+    },
+    "checks": {
+      "groundedness_mean": true,
+      "coherence_mean": true,
+      "agent_rate": true,
+      "p95_ms": true
+    }
+  },
+  "sources": {
+    "realism": "docs/REALISM.md",
+    "loadtest": "docs/evidence/loadtest-20261009-0742.json",
+    "eval": "docs/evidence/eval-20261009-0832.json"
+  }
+}
