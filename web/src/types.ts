@@ -111,6 +111,7 @@ export interface EvidencePack {
     test: { rows: { metric: string; real: string; interval: string; synthetic: string; inside: boolean }[] };
   };
   loadtest: { at: string; matches: number; speed: number; peak_replicas: Record<string, number>; latency: Record<string, Latency> };
-  eval: { at: string; summary: Record<string, number>; checks: Record<string, boolean> };
+  /** `thresholds` names each check's gate; files written before it was added lack it. */
+  eval: { at: string; summary: Record<string, number>; checks: Record<string, boolean>; thresholds?: Record<string, number> };
   sources: Record<string, string>;
 }

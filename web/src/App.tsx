@@ -19,6 +19,7 @@ import { PERSONAS } from "./types";
 import type { CamMode } from "./components/Pitch3D";
 
 const Pitch3D = lazy(() => import("./components/Pitch3D"));
+const Ops = lazy(() => import("./components/Ops"));
 
 function webglAvailable(): boolean {
   try {
@@ -39,6 +40,7 @@ const LANGS: { id: Lang; label: string }[] = [{ id: "en", label: "EN" }, { id: "
 export default function App() {
   const params = new URLSearchParams(location.search);
   if (params.get("lab")) return <AthleteLab cam={(params.get("cam") as CamMode) || "free"} follow={params.get("follow")} />;
+  if (params.get("page") === "ops") return <Suspense fallback={null}><Ops /></Suspense>;
   return <Main params={params} />;
 }
 
@@ -127,6 +129,7 @@ function Main({ params }: { params: URLSearchParams }) {
         <div className="seg" role="group" aria-label="Language">
           {LANGS.map((l) => <button key={l.id} className={lang === l.id ? "on" : ""} onClick={() => setLang(l.id)}>{l.label}</button>)}
         </div>
+        <a className="hdr-link" href="?page=ops">Ops scorecard</a>
       </header>
       <main>
         <div className="watch">

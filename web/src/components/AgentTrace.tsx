@@ -30,7 +30,9 @@ function describe(b: Bar) {
 /** A recorded story run: its steps as a timeline that replays in ~2.5 s when shown, or, for runs
  *  recorded before steps were kept, what it ended with. */
 export function AgentTrace({ run }: { run: StoryRun | null }) {
-  const layout = useMemo(() => layoutTrace(run?.steps), [run]);
+  // Keyed on what the run recorded, so a poll that returns the same run again doesn't restart the replay
+  const recorded = run ? `${run.moment_id}:${run.steps?.length ?? 0}:${run.ms}` : null;
+  const layout = useMemo(() => layoutTrace(run?.steps), [recorded]);
   const [cursor, setCursor] = useState(0);
   const [take, setTake] = useState(0);
   const root = useRef<HTMLDivElement>(null);
