@@ -33,6 +33,8 @@ export interface Live {
   /** Clock shown at the timeline's end. */
   endClock: string | null;
   cues: Cue[];
+  /** Cues this viewer sees that air within the next `UPCOMING_S` wall seconds, for work to start before they do. */
+  upcoming: Cue[];
   history: Cue[];
   /** Frame at this exact instant (for 60 fps renderers); null until the feed starts. */
   sample: () => Frame | null;
@@ -40,6 +42,7 @@ export interface Live {
 }
 
 const wallNow = () => performance.now() / 1000;
+export const UPCOMING_S = 15;
 
 /**
  * Plays a feed through the viewer's transport. `key` names what is playing; a new key starts over,
@@ -69,7 +72,7 @@ export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live
   const sampler = useRef<() => Frame | null>(() => null);
   const sample = useRef(() => sampler.current()).current;
   const empty: Live = { connected: false, playhead: 0, timeline: null, paused: false, followLive: live, speed: initialSpeed, frame: null,
-                        state: null, endClock: null, cues: [], history: [], sample, controls };
+                        state: null, endClock: null, cues: [], upcoming: [], history: [], sample, controls };
   const [view, setView] = useState<Live>(empty);
 
   useEffect(() => {
@@ -120,9 +123,11 @@ export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live
       // A cue that only arrived once its moment had aired still pops up for a viewer watching live
       for (const c of f.late.splice(0)) if (t.followLive && !t.paused && c.display_at_s <= playhead) shownAt.set(c.id, cueClock);
       prev = playhead;
-      const active: Cue[] = [], history: Cue[] = [];
+      const active: Cue[] = [], history: Cue[] = [], upcoming: Cue[] = [];
+      const ahead = playhead + UPCOMING_S * Math.max(1, speedOf(t, l));
       for (const c of f.cues) {
-        if (c.display_at_s > playhead || !f.shows(c)) continue;
+        if (!f.shows(c)) continue;
+        if (c.display_at_s > playhead) { if (c.display_at_s <= ahead) upcoming.push(c); continue; }
         history.push(c);
         const s = shownAt.get(c.id);
         if (s !== undefined && cueClock - s < c.ttl_s) active.push(c);
@@ -132,7 +137,7 @@ export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live
       setView({
         connected: f.connected, playhead, timeline: l, paused: t.paused, followLive: l.live && t.followLive, speed: speedOf(t, l),
         frame: sampleFrames(f.frames, playhead), state: f.stateAt(playhead), endClock: f.stateAt(l.end)?.displayClock ?? null,
-        cues: active, history: history.slice(0, 40), sample, controls,
+        cues: active, upcoming, history: history.slice(0, 40), sample, controls,
       });
     };
     raf = requestAnimationFrame(tick);
