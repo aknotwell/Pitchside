@@ -43,7 +43,7 @@ jobs:
       AZURE_PRINCIPAL_TYPE: ServicePrincipal
       WEBPUBSUB_SKU: Standard_S1
       ALERT_EMAIL: vmoose@outlook.com
-      DEMO_MODE: "false"
+      DEMO_MODE: "true"  # judging window, Oct 27 - Nov 10: warm replicas and the keep-live Logic App
       SERVICE_API_RESOURCE_EXISTS: "true"  # keep the deployed images instead of the placeholder
       SERVICE_INTERPRETER_RESOURCE_EXISTS: "true"
       SERVICE_STORYTELLER_RESOURCE_EXISTS: "true"
