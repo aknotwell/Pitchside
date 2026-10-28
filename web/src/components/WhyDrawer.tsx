@@ -42,10 +42,10 @@ export function WhyDrawer({ cue, persona, lang, onPersona, onClose }: {
         setLoad({ status: "ready", detail });
         if (!detail.run && left > 0) timer = window.setTimeout(() => fetchDetail(left - 1), RETRY_MS);
       })
-      .catch(() => {
+      .catch((err) => {
         if (!alive) return;
         setLoad((l) => (l.status === "ready" ? l : { status: "missing" }));
-        if (left > 0) timer = window.setTimeout(() => fetchDetail(left - 1), RETRY_MS);
+        if (left > 0 && !String(err).includes("404")) timer = window.setTimeout(() => fetchDetail(left - 1), RETRY_MS);
       });
     fetchDetail(RETRIES);
     return () => { alive = false; clearTimeout(timer); };

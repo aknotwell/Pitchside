@@ -73,6 +73,14 @@ export function AgentTrace({ run }: { run: StoryRun | null }) {
     </div>
   );
 
+  if (!layout && run.source === "duplicate") {
+    return (
+      <div className="trace">
+        <p className="muted">The run that wrote this moment stopped before saving its record. Its cues aired; a redelivery found the work already done.</p>
+      </div>
+    );
+  }
+
   if (!layout) {
     const personas = Object.entries(run.personas ?? {});
     return (
