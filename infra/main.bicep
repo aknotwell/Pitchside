@@ -150,6 +150,7 @@ module foundry 'modules/foundry.bicep' = {
         { principalId: ids.storyteller.principalId, roleId: roles.foundryUser, principalType: svc }
         { principalId: ids.api.principalId, roleId: roles.foundryUser, principalType: svc }
         { principalId: ids.storyteller.principalId, roleId: roles.speechUser, principalType: svc }
+        { principalId: ids.api.principalId, roleId: roles.speechUser, principalType: svc }
       ],
       hasUser ? [
         { principalId: principalId, roleId: roles.speechUser, principalType: principalType }

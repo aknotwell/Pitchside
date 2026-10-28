@@ -147,6 +147,9 @@ async def lifespan(app: FastAPI):
     app.state.wps = WebPubSubServiceClient(endpoint=s.webpubsub_endpoint, hub=s.webpubsub_hub, credential=app.state.cred)
     app.state.blobs = BlobServiceClient(s.storage_blob_endpoint, credential=app.state.cred)
     app.state.http = aiohttp.ClientSession()
+    from matchlens.story.speech import Speech
+
+    app.state.speech = Speech(app.state.cred)
     app.state.ask = None
     from matchlens.reflex.ask import Reflex
 
@@ -406,6 +409,47 @@ async def audio(match_id: str, name: str, request: Request):
         raise HTTPException(400, "bad audio name")
     return await stream_blob(request, "audio", path, "audio",
                              {"Content-Type": "audio/mpeg", "Cache-Control": "public, max-age=86400"})
+
+
+VOICE_HEADERS = {"Content-Type": "audio/mpeg", "Cache-Control": "public, max-age=86400"}
+VOICE_TIMEOUT_S = 8.0  # the client prefetches ~10 s ahead; a call later than that is skipped anyway
+
+
+@app.get("/api/matches/{match_id}/cues/{cue_id}/voice")
+async def voice(match_id: str, cue_id: str, request: Request, lang: str = Query("en")):
+    """A cue read aloud as a broadcast call, synthesized once per cue and language, then served from Blob.
+    The words come from the stored cue, never the caller, so this is no general text-to-speech proxy."""
+    from azure.core.exceptions import ResourceNotFoundError
+
+    from matchlens.story.calls import spoken
+
+    if lang not in LANGUAGES:
+        raise HTTPException(400, "unknown language")
+    name = f"{match_id}/voice-{cue_id}-{lang}.mp3"
+    if not AUDIO_NAME.match(name):
+        raise HTTPException(400, "bad cue id")
+    try:
+        cue = await request.app.state.db["cues"].read_item(cue_id, partition_key=match_id)
+    except ResourceNotFoundError as exc:
+        raise HTTPException(404, "cue not found") from exc
+    said = spoken(cue, lang)
+    if said is None:
+        raise HTTPException(404, "cue is not announced")
+    try:
+        return await stream_blob(request, "audio", name, "voice", VOICE_HEADERS)
+    except HTTPException:
+        pass
+    text, call = said
+    speech = request.app.state.speech
+    if not speech.enabled:
+        raise HTTPException(503, "speech unavailable")
+    try:
+        audio = await asyncio.wait_for(speech.synthesize(text, lang, rate=call.rate, pitch=call.pitch), VOICE_TIMEOUT_S)
+    except Exception as exc:
+        log.warning("voice failed for %s/%s: %s", match_id, cue_id, exc)
+        raise HTTPException(503, "speech unavailable") from exc
+    await request.app.state.blobs.get_blob_client("audio", name).upload_blob(audio, overwrite=True)
+    return Response(audio, headers=VOICE_HEADERS)
 
 
 @app.get("/api/replays")

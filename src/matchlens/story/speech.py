@@ -21,11 +21,11 @@ class Speech:
     def enabled(self) -> bool:
         return bool(self.resource_id)
 
-    async def synthesize(self, text: str, lang: str) -> bytes:
+    async def synthesize(self, text: str, lang: str, rate: str = "+5%", pitch: str = "+0%") -> bytes:
         locale, voice = VOICES.get(lang, VOICES["en"])
         token = (await self.cred.get_token("https://cognitiveservices.azure.com/.default")).token
         ssml = (f"<speak version='1.0' xml:lang='{locale}'><voice name='{voice}'>"
-                f"<prosody rate='+5%'>{escape(text)}</prosody></voice></speak>")
+                f"<prosody rate='{rate}' pitch='{pitch}'>{escape(text)}</prosody></voice></speak>")
         headers = {"Authorization": f"Bearer aad#{self.resource_id}#{token}",
                    "Content-Type": "application/ssml+xml",
                    "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3", "User-Agent": "matchlens"}

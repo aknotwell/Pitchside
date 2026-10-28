@@ -96,6 +96,9 @@ class FakeBlobs:
                 blobs.downloads += 1
                 await asyncio.sleep(0.05)  # long enough for a burst of joiners to overlap
                 return FakeDownloader(blobs.files[key][offset:None if length is None else offset + length])
+
+            async def upload_blob(self, data, overwrite=False):
+                blobs.files[key] = data
         return _B()
 
 
@@ -464,3 +467,55 @@ def test_scorecard_with_no_runs_yet(client):
     assert body["runs"]["total"] == 0 and body["runs"]["p50_ms"] is None and body["runs"]["p95_ms"] is None
     assert body["verifier"] == {"checked": 0, "rejected": 0, "retried_ok": 0}
     assert body["chaos"] == {"armed": False} and body["recent"] == []
+
+
+GOAL_CUE = {"id": "e9-goal", "matchId": "m1", "template": "goal", "title": "GOAL · Riverside", "text": "...",
+            "data": {"player": "Ada Moss", "team": "h", "score": "2–1"}}
+
+
+class FakeSpeech:
+    def __init__(self, enabled=True, fail=False):
+        self.enabled, self.fail, self.calls = enabled, fail, []
+
+    async def synthesize(self, text, lang, rate="+5%", pitch="+0%"):
+        self.calls.append((text, lang, rate, pitch))
+        if self.fail:
+            raise RuntimeError("speech down")
+        return b"ID3voice"
+
+
+@pytest.fixture
+def voiced():
+    app.state.db["cues"] = FakeContainer([GOAL_CUE, {**GOAL_CUE, "id": "e3-shot", "template": "shot"}])
+    app.state.speech = FakeSpeech()
+    return app.state.speech
+
+
+def test_a_cached_call_is_streamed_without_synthesizing(client, voiced):
+    app.state.blobs.files[("audio", "m1/voice-e9-goal-es.mp3")] = b"ID3cached"
+    r = client.get("/api/matches/m1/cues/e9-goal/voice?lang=es")
+    assert r.status_code == 200 and r.content == b"ID3cached" and r.headers["content-type"] == "audio/mpeg"
+    assert voiced.calls == []
+
+
+def test_a_first_call_is_synthesized_once_from_the_stored_cue_and_cached(client, voiced):
+    r = client.get("/api/matches/m1/cues/e9-goal/voice?lang=es")
+    assert r.status_code == 200 and r.content == b"ID3voice" and "max-age=86400" in r.headers["cache-control"]
+    assert voiced.calls == [("¡Gol! ¡Gol de Riverside! Marca Ada Moss. 2 a 1.", "es", "+20%", "+15%")]
+    assert app.state.blobs.files[("audio", "m1/voice-e9-goal-es.mp3")] == b"ID3voice"
+    assert client.get("/api/matches/m1/cues/e9-goal/voice?lang=es").content == b"ID3voice"
+    assert len(voiced.calls) == 1
+
+
+@pytest.mark.parametrize("path,status", [("/api/matches/m1/cues/nope/voice", 404), ("/api/matches/m1/cues/e3-shot/voice", 404),
+                                         ("/api/matches/m1/cues/e9-goal/voice?lang=fr", 400)])
+def test_unknown_or_unannounced_cues_are_never_voiced(client, voiced, path, status):
+    assert client.get(path).status_code == status
+    assert voiced.calls == []
+
+
+@pytest.mark.parametrize("speech", [FakeSpeech(fail=True), FakeSpeech(enabled=False)])
+def test_speech_failure_is_a_503_and_nothing_is_cached(client, voiced, speech):
+    app.state.speech = speech
+    assert client.get("/api/matches/m1/cues/e9-goal/voice").status_code == 503
+    assert ("audio", "m1/voice-e9-goal-en.mp3") not in app.state.blobs.files
