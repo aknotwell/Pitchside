@@ -152,6 +152,21 @@ class Writer(Protocol):
                       feedback: list[str]) -> tuple[Explanation, str]: ...
 
 
+class StepLog:
+    """What each agent did in one ``tell()``: kept beside the workflow, never in its checkpointed state."""
+
+    def __init__(self):
+        self.t0 = time.perf_counter()
+        self.steps: list[dict] = []
+
+    def add(self, step: str, outcome: str, start: float, *, persona: str | None = None, attempt: int = 0,
+            detail: str | None = None) -> None:
+        now = time.perf_counter()
+        self.steps.append({"step": step, "persona": persona, "attempt": attempt,
+                           "t_ms": int(1000 * (start - self.t0)), "ms": int(1000 * (now - start)),
+                           "outcome": outcome, "detail": detail[:200] if detail else None})
+
+
 def _langs(segments: list[tuple[str, str]], persona: str) -> list[str]:
     return [lang for p, lang in segments if p == persona]
 
@@ -164,15 +179,19 @@ def _personas(segments: list[tuple[str, str]]) -> list[str]:
 class Editor(Executor):
     """Decides what airs: always goals and recaps; otherwise at most one explanation per budget window."""
 
-    def __init__(self, budget: OverlayBudget):
+    def __init__(self, budget: OverlayBudget, steps: StepLog):
         super().__init__(id="editor")
         self.budget = budget
+        self.steps = steps
 
     @handler
     async def run(self, moment: Moment, ctx: WorkflowContext[Draft, Skipped]) -> None:
+        start = time.perf_counter()
         if moment.kind in ALWAYS_AIR or self.budget.allow(moment.match_id, moment.clock_s):
+            self.steps.add("editor", "aired", start)
             await ctx.send_message(Draft(moment=moment))
         else:
+            self.steps.add("editor", "skipped", start, detail="overlay budget")
             await ctx.yield_output(Skipped(moment.moment_id, "overlay budget"))
 
 
@@ -180,36 +199,43 @@ class Explainer(Executor):
     """Writes the shared angle. Optional: a failed or ungrounded angle is dropped, never retried."""
 
     def __init__(self, writer: Writer, segments: list[tuple[str, str]], roster: Callable[[str], set[str]],
-                 timeout_s: float = 8.0):
+                 steps: StepLog, timeout_s: float = 8.0):
         super().__init__(id="explainer")
         self.writer = writer
         self.segments = segments
         self.roster = roster
+        self.steps = steps
         self.timeout_s = timeout_s
 
     @handler
     async def run(self, draft: Draft, ctx: WorkflowContext[Brief]) -> None:
         m = draft.moment
         core = None
+        start = time.perf_counter()
         try:
             recap = m.kind in ("half_time", "full_time")
-            core, _ = await asyncio.wait_for(self.writer.core(m), timeout=self.timeout_s * (2.0 if recap else 1.0))
+            core, model = await asyncio.wait_for(self.writer.core(m), timeout=self.timeout_s * (2.0 if recap else 1.0))
             result = verify_core(core, m, self.roster(m.match_id))
-            if not result.ok:
+            if result.ok:
+                self.steps.add("explainer", "ok", start, detail=model)
+            else:
                 log.info("angle for %s dropped: %s", m.moment_id, result.problems[:3])
+                self.steps.add("explainer", "dropped", start, detail="; ".join(result.problems[:3]))
                 core = None
         except Exception as exc:  # model down, timeout, bad JSON
             log.warning("explainer failed for %s: %s", m.moment_id, exc)
+            self.steps.add("explainer", "failed", start, detail=f"{type(exc).__name__}: {exc}")
         await ctx.send_message(Brief(m, core, pending=_personas(self.segments)))
 
 
 class Personalizer(Executor):
     """One concurrent model call per pending persona, each covering all of that persona's languages."""
 
-    def __init__(self, writer: Writer, segments: list[tuple[str, str]]):
+    def __init__(self, writer: Writer, segments: list[tuple[str, str]], steps: StepLog):
         super().__init__(id="personalizer")
         self.writer = writer
         self.segments = segments
+        self.steps = steps
 
     @handler
     async def run(self, brief: Brief, ctx: WorkflowContext[Candidate]) -> None:
@@ -217,14 +243,18 @@ class Personalizer(Executor):
         m = brief.moment
 
         async def one(persona: str):
+            start = time.perf_counter()
             try:
                 expl, model = await self.writer.persona(m, persona, _langs(self.segments, persona), brief.core,
                                                         brief.feedback.get(persona, []))
                 variants = [v.model_copy(update={"persona": persona}) for v in expl.variants]
+                self.steps.add("personalizer", "ok", start, persona=persona, attempt=brief.attempt, detail=model)
                 return persona, Explanation(variants=variants), model, None
             except Exception as exc:
                 log.warning("personalizer %s failed for %s: %s", persona, m.moment_id, exc)
-                return persona, None, None, f"{type(exc).__name__}: {exc}"[:300]
+                err = f"{type(exc).__name__}: {exc}"[:300]
+                self.steps.add("personalizer", "failed", start, persona=persona, attempt=brief.attempt, detail=err)
+                return persona, None, None, err
 
         drafts, errors, models = {}, {}, {}
         for persona, expl, model, err in await asyncio.gather(*(one(p) for p in brief.pending)):
@@ -236,10 +266,12 @@ class Personalizer(Executor):
 
 
 class Verifier(Executor):
-    def __init__(self, segments: list[tuple[str, str]], roster: Callable[[str], set[str]], max_retries: int = 1):
+    def __init__(self, segments: list[tuple[str, str]], roster: Callable[[str], set[str]], steps: StepLog,
+                 max_retries: int = 1):
         super().__init__(id="verifier")
         self.segments = segments
         self.roster = roster
+        self.steps = steps
         self.max_retries = max_retries
 
     @handler
@@ -250,28 +282,35 @@ class Verifier(Executor):
         models, reasons = dict(b.models), dict(b.reasons)
         retry: dict[str, list[str]] = {}
 
-        def fall_back(persona: str, reason: str) -> None:
+        def fall_back(persona: str, reason: str, start: float) -> None:
             segs = [(persona, lang) for lang in _langs(self.segments, persona)]
             accepted.extend(fallback_explanation(m, segs).variants)
             sources[persona], reasons[persona] = "fallback", reason
+            self.steps.add("verifier", "fallback", start, persona=persona, attempt=b.attempt, detail=reason)
 
         for persona in b.pending:
+            start = time.perf_counter()
             if persona in cand.errors:
-                fall_back(persona, cand.errors[persona] or "model error")
+                fall_back(persona, cand.errors[persona] or "model error", start)
                 continue
             segs = [(persona, lang) for lang in _langs(self.segments, persona)]
             result = verify(cand.drafts[persona], m, segs, self.roster(m.match_id))
             if result.ok and cand.models[persona] == TEMPLATE_MODEL:
                 accepted.extend(cand.drafts[persona].variants)
                 sources[persona], reasons[persona] = "fallback", "no model configured"
+                self.steps.add("verifier", "fallback", start, persona=persona, attempt=b.attempt,
+                             detail="no model configured")
             elif result.ok:
                 accepted.extend(cand.drafts[persona].variants)
                 sources[persona], models[persona] = "agent", cand.models[persona]
+                self.steps.add("verifier", "accepted", start, persona=persona, attempt=b.attempt)
             elif b.attempt < self.max_retries:
                 log.info("verifier rejected %s/%s (attempt %d): %s", m.moment_id, persona, b.attempt, result.problems[:5])
                 retry[persona] = result.problems[:12]
+                self.steps.add("verifier", "rejected", start, persona=persona, attempt=b.attempt,
+                             detail="; ".join(result.problems[:3]))
             else:
-                fall_back(persona, "verifier: " + "; ".join(result.problems[:4]))
+                fall_back(persona, "verifier: " + "; ".join(result.problems[:4]), start)
 
         if retry:
             await ctx.send_message(Brief(m, b.core, pending=list(retry), attempt=b.attempt + 1, feedback=retry,
@@ -281,12 +320,14 @@ class Verifier(Executor):
 
 
 class Director(Executor):
-    def __init__(self, fault: Callable[[Approved], None] | None = None):
+    def __init__(self, steps: StepLog, fault: Callable[[Approved], None] | None = None):
         super().__init__(id="director")
+        self.steps = steps
         self.fault = fault  # injected failure for the chaos drill and tests
 
     @handler
     async def run(self, ok: Approved, ctx: WorkflowContext[Never, list[OverlayCue]]) -> None:
+        start = time.perf_counter()
         if self.fault:
             self.fault(ok)
         m = ok.moment
@@ -316,6 +357,7 @@ class Director(Executor):
                 moment_id=m.moment_id,
                 trace_id=m.trace_id,
             ))
+        self.steps.add("director", "ok", start)
         await ctx.yield_output(cues)
 
 
@@ -347,12 +389,12 @@ class Storyteller:
         self.budget = budget or OverlayBudget()
         self.fault = fault
 
-    def build(self, moment_id: str):
-        editor = Editor(self.budget)
-        explainer = Explainer(self.writer, self.segments, self.roster)
-        personalizer = Personalizer(self.writer, self.segments)
-        verifier = Verifier(self.segments, self.roster)
-        director = Director(self.fault)
+    def build(self, moment_id: str, steps: StepLog):
+        editor = Editor(self.budget, steps)
+        explainer = Explainer(self.writer, self.segments, self.roster, steps)
+        personalizer = Personalizer(self.writer, self.segments, steps)
+        verifier = Verifier(self.segments, self.roster, steps)
+        director = Director(steps, self.fault)
         return (
             WorkflowBuilder(name=f"story-{moment_id}", start_executor=editor, checkpoint_storage=self.storage)
             .add_edge(editor, explainer)
@@ -365,13 +407,14 @@ class Storyteller:
 
     async def tell(self, moment: Moment) -> tuple[list[OverlayCue], dict]:
         """Run (or resume) the workflow for one moment. Returns cues and run info."""
-        wf = self.build(moment.moment_id)
         resumed_from = None
         if self.storage is not None:
             latest = await self.storage.get_latest(workflow_name=f"story-{moment.moment_id}")
             if latest is not None:
                 resumed_from = latest.checkpoint_id
-        t0 = time.perf_counter()
+        started_at = time.time()
+        steps = StepLog()
+        wf = self.build(moment.moment_id, steps)
         if resumed_from:
             log.info("resuming %s from checkpoint %s", moment.moment_id, resumed_from)
             result = await wf.run(checkpoint_id=resumed_from)
@@ -388,8 +431,8 @@ class Storyteller:
         sources = set(by_persona.values())
         source = (sources.pop() if len(sources) == 1 else "partial") if cues else ("duplicate" if resumed_from else None)
         info = {"moment_id": moment.moment_id, "kind": moment.kind, "resumed_from": resumed_from,
-                "skipped": skipped, "cues": len(cues), "ms": int(1000 * (time.perf_counter() - t0)),
-                "source": source, "personas": by_persona}
+                "skipped": skipped, "cues": len(cues), "ms": int(1000 * (time.perf_counter() - steps.t0)),
+                "source": source, "personas": by_persona, "started_at": started_at, "steps": steps.steps}
         return cues, info
 
 
