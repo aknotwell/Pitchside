@@ -12,11 +12,16 @@ agent resumes exactly where it stopped.
 
 ## Judging this? Start here
 
-1. Open the **live demo**. It picks the most recent match.
+1. Open the **live demo**. It picks the live match, or, when none is live, opens the newest replay
+   a few seconds before its first goal. **Start a live match** in the banner kicks off a new one.
 2. Toggle **Fan / Analyst / Academy / Scout** and **EN / ES / 日本語**. Every overlay changes register
    and language.
-3. Click **Why?** on any overlay to see the evidence pack. The model may only use
-   these numbers; a code verifier rejects anything else.
+3. Click **Why?** on any overlay. **Behind this moment** shows the same moment as
+   written for all four viewers, then replays the recorded agent run: Editor,
+   Explainer, one Personalizer per viewer in parallel, the Verifier (a rejected
+   draft shows in red with the reason, then its retry), and the Director. Below
+   it is the evidence pack. The model may only use these numbers; a code
+   verifier rejects anything else.
 4. Open **Producer** → **Start a match**. This launches a new Container Apps Job
    execution, which plays a live match.
 5. Open **Ask** and ask "Who is the fastest player?", then "Who scored the
@@ -30,10 +35,16 @@ agent resumes exactly where it stopped.
    KEDA). It re-simulates the match deterministically from its seed and
    includes every cue that aired. There is always something to watch, even
    when nothing is live.
-7. Click **Chaos drill**. The next explanation kills a storyteller replica
+7. Open **Ops scorecard** (top right, or `?page=ops`). Live tiles from the running
+   system: runs, the share written by agents, workflow latency, drafts the
+   verifier rejected, checkpoint resumes. Below them, the realism report
+   against SkillCorner, including the held-out test set where it misses, plus
+   the load test and the eval gate.
+8. Click **Chaos drill**. The next explanation kills a storyteller replica
    mid-workflow. Watch the run table: Service Bus redelivers the moment and the
    Agent Framework workflow **resumes from its Cosmos DB checkpoint** without
-   calling the model again.
+   calling the model again. That run's trace keeps the steps the killed
+   replica finished.
 
 ## How it works
 
