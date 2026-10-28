@@ -127,6 +127,7 @@ LIST_TTL_S = 2.0
 LIST_CACHE = {"Cache-Control": f"public, max-age={int(LIST_TTL_S)}"}
 match_list, replay_list, ops_view = Cached(LIST_TTL_S), Cached(LIST_TTL_S), Cached(LIST_TTL_S)
 scorecard_view = Cached(30.0)
+SCORECARD_WINDOW_H = 168  # a week, so the page still has numbers on a day nothing was played
 LIVE_QUIET_S = 300  # a match that hasn't ended but has sent nothing for this long has crashed (as the web player decides)
 
 
@@ -551,13 +552,13 @@ def score_runs(runs: list[dict]) -> dict:
                                            p / 100) for p in (50, 95)}},
         "verifier": {"checked": len(verifier), "rejected": sum(1 for s in verifier if s.get("outcome") == "rejected"),
                      "retried_ok": sum(1 for s in verifier if s.get("attempt", 0) > 0 and s.get("outcome") == "accepted")},
-        "recent": [{k: r.get(k) for k in RECENT_FIELDS} for r in runs if r.get("steps")][:12],
+        "recent": [{k: r.get(k) for k in RECENT_FIELDS} for r in runs[:12]],
     }
 
 
 @app.get("/api/scorecard")
 async def scorecard(request: Request):
-    """The last 24 h of the storyteller in numbers, for the judges' scorecard. Three Cosmos reads per 30 s."""
+    """The last week of the storyteller in numbers, for the judges' scorecard. Three Cosmos reads per 30 s."""
     db = request.app.state.db
 
     async def load():
@@ -573,13 +574,13 @@ async def scorecard(request: Request):
         runs, states, chaos_state = await asyncio.gather(
             query(db["runs"], "SELECT c.moment_id, c.matchId, c.kind, c.source, c.ms, c.at, c.resumed_from, c.skipped, "
                   "c.personas, c.steps FROM c WHERE c.type = 'storyRun' AND c.at > @since ORDER BY c.at DESC",
-                  [{"name": "@since", "value": now - 86400}], limit=5000),
+                  [{"name": "@since", "value": now - SCORECARD_WINDOW_H * 3600}], limit=5000),
             query(db["matchState"], "SELECT c.ended, c._ts AS updated FROM c WHERE c.type = 'matchState' AND c._ts > @since",
-                  [{"name": "@since", "value": int(now) - 86400}], limit=1000),
+                  [{"name": "@since", "value": int(now) - SCORECARD_WINDOW_H * 3600}], limit=1000),
             chaos_doc())
-        return {"generated_at": now, "window_h": 24, **score_runs(runs),
+        return {"generated_at": now, "window_h": SCORECARD_WINDOW_H, **score_runs(runs),
                 "matches": {"live": sum(1 for m in states if not m.get("ended") and now - m["updated"] < LIVE_QUIET_S),
-                            "finished_24h": sum(1 for m in states if m.get("ended"))},
+                            "finished": sum(1 for m in states if m.get("ended"))},
                 "chaos": chaos_state}
 
     return JSONResponse(await scorecard_view.get(load), headers={"Cache-Control": "public, max-age=30"})

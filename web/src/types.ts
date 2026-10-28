@@ -97,7 +97,7 @@ export interface Scorecard {
   generated_at: number; window_h: number;
   runs: { total: number; agent: number; partial: number; fallback: number; skipped: number; resumed: number; p50_ms: number | null; p95_ms: number | null };
   verifier: { checked: number; rejected: number; retried_ok: number };
-  matches: { live: number; finished_24h: number };
+  matches: { live: number; finished: number };
   chaos: { armed: boolean; lastFiredAt?: number };
   recent: StoryRun[];
 }

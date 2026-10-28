@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fromOps, percentile } from "./ops";
-import type { MatchSummary, StoryRun } from "./types";
+import { fromOps, fromScorecard, percentile } from "./ops";
+import type { MatchSummary, Scorecard, StoryRun } from "./types";
 
 const run = (r: Partial<StoryRun>): StoryRun =>
   ({ moment_id: "m", matchId: "x", kind: "goal", source: "agent", ms: 1000, at: 0, resumed_from: null, skipped: null, ...r });
@@ -34,11 +34,29 @@ describe("fromOps", () => {
   });
 
   it("counts live matches and the ones that finished in the last day", () => {
-    expect(view.matches).toEqual({ live: 1, finished_24h: 1 });
+    expect(view.matches).toEqual({ live: 1, finished: 1 });
   });
 
   it("says it has no verifier counts rather than claiming none were caught", () => {
     expect(view.verifier).toBeNull();
     expect(view.scope).toBe("last 6 runs");
+  });
+});
+
+describe("fromScorecard", () => {
+  const card = (checked: number): Scorecard => ({
+    generated_at: 0, window_h: 168,
+    runs: { total: 3, agent: 3, partial: 0, fallback: 0, skipped: 0, resumed: 0, p50_ms: 1, p95_ms: 2 },
+    verifier: { checked, rejected: 0, retried_ok: 0 }, matches: { live: 0, finished: 2 }, chaos: { armed: false }, recent: [],
+  });
+
+  it("names a week-long window in days", () => {
+    expect(fromScorecard(card(5)).scope).toBe("last 7 days");
+    expect(fromScorecard(card(5)).finishedWithin).toBe("the last 7 days");
+  });
+
+  it("shows no verifier counts until runs recorded their steps", () => {
+    expect(fromScorecard(card(0)).verifier).toBeNull();
+    expect(fromScorecard(card(4)).verifier?.checked).toBe(4);
   });
 });

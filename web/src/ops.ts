@@ -9,12 +9,17 @@ export interface OpsView {
   /** The ops endpoint doesn't count verifier checks. */
   verifier: Scorecard["verifier"] | null;
   matches: Scorecard["matches"];
+  /** The span `matches.finished` covers, as words. */
+  finishedWithin: string;
   chaos: Scorecard["chaos"];
   recent: StoryRun[];
 }
 
+const span = (h: number) => (h % 24 === 0 && h > 24 ? `${h / 24} days` : `${h} h`);
+
 export const fromScorecard = (s: Scorecard): OpsView =>
-  ({ scope: `last ${s.window_h} h`, runs: s.runs, verifier: s.verifier, matches: s.matches, chaos: s.chaos, recent: s.recent });
+  ({ scope: `last ${span(s.window_h)}`, runs: s.runs, verifier: s.verifier.checked ? s.verifier : null, matches: s.matches,
+     finishedWithin: `the last ${span(s.window_h)}`, chaos: s.chaos, recent: s.recent });
 
 /** Nearest-rank percentile; null for no values. */
 export function percentile(values: number[], p: number): number | null {
@@ -36,7 +41,8 @@ export function fromOps(ops: { chaos: Scorecard["chaos"]; runs: StoryRun[] }, ma
       p50_ms: percentile(ms, 0.5), p95_ms: percentile(ms, 0.95),
     },
     verifier: null,
-    matches: { live: matches.filter(isLive).length, finished_24h: matches.filter((m) => m.ended && now - m.updated < 86400).length },
+    matches: { live: matches.filter(isLive).length, finished: matches.filter((m) => m.ended && now - m.updated < 86400).length },
+    finishedWithin: "the last day",
     chaos: ops.chaos,
     recent: runs.slice(0, 12),
   };

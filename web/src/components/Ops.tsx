@@ -154,10 +154,10 @@ export default function Ops() {
           <Tile label="Invented numbers caught" value={view?.verifier ? view.verifier.rejected.toLocaleString() : "—"}>
             {view?.verifier
               ? `of ${view.verifier.checked.toLocaleString()} drafts checked · ${view.verifier.retried_ok} fixed on retry`
-              : "Counted by the scorecard endpoint"}
+              : "Counted from runs that recorded their agent steps"}
           </Tile>
           <Tile label="Checkpoint resumes" value={r ? r.resumed : "—"}>runs that lost their replica and resumed from Cosmos DB</Tile>
-          <Tile label="Live matches" value={view ? view.matches.live : "—"}>{view ? `${view.matches.finished_24h} finished in the last day` : ""}</Tile>
+          <Tile label="Live matches" value={view ? view.matches.live : "—"}>{view ? `${view.matches.finished} finished in ${view.finishedWithin}` : ""}</Tile>
           <Tile label="Chaos drill" value={view ? <span className={view.chaos.armed ? "warn" : ""}>{view.chaos.armed ? "Armed" : "Idle"}</span> : "—"}>
             {view?.chaos.lastFiredAt ? `last fired ${time(view.chaos.lastFiredAt)}` : "kills a storyteller mid-workflow"}
           </Tile>
