@@ -10,6 +10,7 @@ import { Scoreboard } from "./components/Scoreboard";
 import { Squads } from "./components/Squads";
 import { Stats } from "./components/Stats";
 import { Transport } from "./components/Transport";
+import { ReplayBanner } from "./components/ReplayBanner";
 import { WhyDrawer } from "./components/WhyDrawer";
 import { BROADCAST_DELAY_S, useLiveMatch } from "./live";
 import { useReplay } from "./replay";
@@ -67,8 +68,12 @@ function Main({ params }: { params: URLSearchParams }) {
   const [replays, setReplays] = useState<Awaited<ReturnType<typeof api.replays>>["replays"]>([]);
   const [replayId, setReplayId] = useState<string | null>(params.get("replay"));
   const [finalState, setFinalState] = useState<MatchState | null>(null);
+  // A replay the app opened because nothing was live, rather than one the viewer picked or linked to
+  const [opened, setOpened] = useState(false);
+  const [awaitingLive, setAwaitingLive] = useState(false);
+  const [bannerHidden, setBannerHidden] = useState(false);
   const liveFeed = useLiveMatch(replayId ? null : matchId, persona, lang);
-  const replayFeed = useReplay(replayId, persona, lang, finalState);
+  const replayFeed = useReplay(replayId, persona, lang, finalState, opened);
   const live = replayId ? replayFeed : liveFeed;
   const { paused, controls } = live;
 
@@ -105,9 +110,15 @@ function Main({ params }: { params: URLSearchParams }) {
     return () => { alive = false; clearInterval(id); };
   }, []);
 
-  useEffect(() => {  // nothing live: open the newest replay, so there's always something to watch
-    if (matchesLoaded && !matchId && !replayId && replays.length) setReplayId(replays[0].matchId);
+  useEffect(() => {  // nothing live: open the newest replay at its best moment, so there's always something to watch
+    if (matchesLoaded && !matchId && !replayId && replays.length) { setOpened(true); setReplayId(replays[0].matchId); }
   }, [matchesLoaded, matchId, replayId, replays]);
+
+  const liveNow = matches.find(isLive);
+  const watchLive = (id: string) => { setOpened(false); setAwaitingLive(false); setReplayId(null); setMatchId(id); };
+  useEffect(() => {  // a match started from the banner opens as soon as it's live
+    if (awaitingLive && replayId && liveNow) watchLive(liveNow.id);
+  }, [awaitingLive, replayId, liveNow?.id]);
 
   useEffect(() => {
     const q = new URLSearchParams({ ...(replayId ? { replay: replayId } : matchId ? { match: matchId } : {}), persona, lang, view, ...(view === "3d" ? { cam } : {}), ...(follow ? { follow } : {}) });
@@ -119,8 +130,8 @@ function Main({ params }: { params: URLSearchParams }) {
       <header>
         <h1>MatchLens <small>live explain layer</small></h1>
         <MatchPicker matches={matches} replays={replays} matchId={matchId} replayId={replayId}
-                     onMatch={(id) => { setReplayId(null); setMatchId(id); }}
-                     onReplay={setReplayId} />
+                     onMatch={(id) => { setOpened(false); setReplayId(null); setMatchId(id); }}
+                     onReplay={(id) => { setOpened(false); setReplayId(id); }} />
         <div className="seg" role="group" aria-label="Viewer">
           {PERSONAS.map((p) => (
             <button key={p.id} className={persona === p.id ? "on" : ""} title={p.hint} onClick={() => setPersona(p.id)}>{p.label}</button>
@@ -133,6 +144,10 @@ function Main({ params }: { params: URLSearchParams }) {
       </header>
       <main>
         <div className="watch">
+          {replayId && !bannerHidden && (opened || liveNow) && (
+            <ReplayBanner replay={replays.find((r) => r.matchId === replayId)} live={liveNow} onWatchLive={watchLive}
+                          onStarted={() => setAwaitingLive(true)} onDismiss={() => setBannerHidden(true)} />
+          )}
           <section className={view === "3d" ? "stage three" : "stage"}>
             <Scoreboard state={live.state} delay={replayId ? 0 : BROADCAST_DELAY_S} connected={live.connected} replay={!!replayId} paused={paused}
                         behind={!replayId && !live.followLive} />

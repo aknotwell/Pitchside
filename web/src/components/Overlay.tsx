@@ -11,8 +11,11 @@ export function badge(c: Cue) {
 /** Lower-thirds the viewer can close. Dismissal is per cue id, so the next cue still appears, and a
  *  dismissed one stays under Moments with its Why? intact. */
 export function lowerThirds(cues: Cue[], dismissed: ReadonlySet<string>): Cue[] {
-  return cues.filter((c) => !c.template.startsWith("panel.") && c.template !== "player_tag.speed" && !dismissed.has(c.id)).slice(0, 2);
+  return cues.filter((c) => isLowerThird(c) && !dismissed.has(c.id)).slice(0, 2);
 }
+
+/** Recap panels and speed tags air elsewhere on screen; everything else is a lower-third. */
+export const isLowerThird = (c: Cue) => !c.template.startsWith("panel.") && c.template !== "player_tag.speed";
 
 export function Overlay({ cues, onWhy }: { cues: Cue[]; onWhy: (c: Cue) => void }) {
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());

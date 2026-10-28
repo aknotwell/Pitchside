@@ -14,6 +14,8 @@ export interface Feed {
   shows: (c: Cue) => boolean;
   /** Cues that arrived after the playhead had already passed them; drained by the player. */
   late: Cue[];
+  /** Match time to start from instead of the timeline's start. */
+  startAt?: number;
 }
 
 export interface Controls { togglePause: () => void; seek: (t: number) => void; setSpeed: (speed: number) => void; goLive: () => void }
@@ -105,7 +107,11 @@ export function usePlayer(feed: RefObject<Feed | null>, key: string | null, live
         setView({ ...empty, connected: f.connected, state: f.stateAt(Infinity) });
         return;
       }
-      if (!started) { tr.current = { ...tr.current, anchor: { wall: now, t0: l.start, speed: tr.current.anchor.speed } }; started = true; }
+      if (!started) {
+        const t0 = Math.min(l.end, Math.max(l.start, f.startAt ?? l.start));
+        tr.current = { ...tr.current, anchor: { wall: now, t0, speed: tr.current.anchor.speed } };
+        started = true;
+      }
       tr.current = settle(tr.current, now, l);
       const playhead = positionAt(tr.current, now, l);
       const t = tr.current;

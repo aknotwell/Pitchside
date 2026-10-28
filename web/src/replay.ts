@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { API } from "./api";
 import { scoreboardAt, snapshotAt, type Timeline } from "./playback";
 import { type Feed, type Live, usePlayer } from "./player";
+import { isLowerThird } from "./components/Overlay";
 import type { Cue, Frame, Lang, MatchMeta, MatchState, Persona, RestartKind, TeamSummary } from "./types";
 
 /** [t, ball x, ball y, players, ball height, restart]; replays packaged before a field was added omit it. */
@@ -26,18 +27,32 @@ export function unpackFrames(playerIds: string[], frames: PackedFrame[]): Frame[
   }));
 }
 
+/** Match seconds of build-up an opened replay shows before its best moment airs. */
+export const OPENING_LEAD_S = 12;
+
+/** Where a replay opened for the viewer, rather than picked, starts: just before its first goal, or
+ *  failing that its most important lower-third, so an explanation airs within seconds. Null when it
+ *  has no lower-thirds, to start from kick-off. */
+export function openingAt(cues: Cue[]): number | null {
+  const thirds = cues.filter(isLowerThird).sort((a, b) => a.display_at_s - b.display_at_s);
+  const best = thirds.find((c) => c.template === "goal") ?? thirds.reduce<Cue | null>((b, c) => (!b || c.priority < b.priority ? c : b), null);
+  return best ? Math.max(0, best.display_at_s - OPENING_LEAD_S) : null;
+}
+
 function team(meta: MatchMeta, side: "home" | "away", goals: number): TeamSummary {
   const t = meta[side];
   return { id: t.id, name: t.name, goals, shots: 0, shotsOnTarget: 0, xg: 0, passes: 0, passAccuracy: 0, finalThirdEntries: 0, ppda: null, pressures: 0, turnovers: 0 };
 }
 
 /** Plays a packaged replay with the same transport and rendering contract as the live hook. */
-export function useReplay(matchId: string | null, persona: Persona, lang: Lang, finalState: MatchState | null): Live {
+export function useReplay(matchId: string | null, persona: Persona, lang: Lang, finalState: MatchState | null, opening = false): Live {
   const feed = useRef<Feed | null>(null);
   const finalRef = useRef<MatchState | null>(finalState);
   finalRef.current = finalState;  // read inside the loop; changing it must not restart playback
   const view = useRef({ persona, lang });
   view.current = { persona, lang };  // same: switching viewer or language carries on from the current moment
+  const openRef = useRef(opening);
+  openRef.current = opening;
 
   useEffect(() => {
     if (!matchId) return;
@@ -48,7 +63,7 @@ export function useReplay(matchId: string | null, persona: Persona, lang: Lang, 
       const frames = unpackFrames(p.playerIds, p.frames);
       const timeline: Timeline = { start: frames[0].t_s, end: frames[frames.length - 1].t_s, live: false, rate: 0 };
       feed.current = {
-        connected: true, frames, cues: p.cues, late: [],
+        connected: true, frames, cues: p.cues, late: [], startAt: openRef.current ? openingAt(p.cues) ?? undefined : undefined,
         timeline: () => timeline,
         // Every viewer/language variant airs together, so after a switch the new view's copy of a
         // moment keeps its real air time: what is up stays up, and nothing already gone comes back.
