@@ -97,7 +97,7 @@ export function AgentTrace({ run }: { run: StoryRun | null }) {
   return (
     <div className="trace" ref={root}>
       {head}
-      {run.resumed_from && <p className="muted">The drill killed the replica after these steps; another replica resumed from the Cosmos DB checkpoint without calling the models again.</p>}
+      {run.resumed_from && <p className="muted">A replica stopped mid-run, and another resumed from its Cosmos DB checkpoint. Steps finished before that checkpoint were not run again.</p>}
       <div className="tr-status" aria-live="off">
         <span>{playing ? "Replaying the recorded run" : "Recorded run"}</span>
         <span className="tr-clock">{secs(cursor)} / {secs(layout.total)}</span>

@@ -42,7 +42,11 @@ export function WhyDrawer({ cue, persona, lang, onPersona, onClose }: {
         setLoad({ status: "ready", detail });
         if (!detail.run && left > 0) timer = window.setTimeout(() => fetchDetail(left - 1), RETRY_MS);
       })
-      .catch(() => alive && setLoad((l) => (l.status === "ready" ? l : { status: "missing" })));
+      .catch(() => {
+        if (!alive) return;
+        setLoad((l) => (l.status === "ready" ? l : { status: "missing" }));
+        if (left > 0) timer = window.setTimeout(() => fetchDetail(left - 1), RETRY_MS);
+      });
     fetchDetail(RETRIES);
     return () => { alive = false; clearTimeout(timer); };
   }, [key]);
