@@ -96,9 +96,9 @@ def verify(expl: Explanation, moment: Moment, required: list[tuple[str, str]], r
         tag = f"[{v.persona}/{v.lang}]"
         body = f"{v.title} {v.text}"
         if len(v.title) > MAX_TITLE:
-            problems.append(f"{tag} title longer than {MAX_TITLE} characters")
+            problems.append(f"{tag} title is {len(v.title)} characters, over the {MAX_TITLE} limit: cut {len(v.title) - MAX_TITLE + 10}+")
         if len(v.text) > MAX_TEXT:
-            problems.append(f"{tag} text longer than {MAX_TEXT} characters")
+            problems.append(f"{tag} text is {len(v.text)} characters, over the {MAX_TEXT} limit: cut {len(v.text) - MAX_TEXT + 30}+")
         if not v.evidence_keys:
             problems.append(f"{tag} cites no evidence keys")
         for k in v.evidence_keys:
