@@ -25,7 +25,7 @@ class Variant(BaseModel):
     persona: str = Field(description="'analyst', 'casual', 'academy' or 'scout'")
     lang: str = Field(description="ISO 639-1 language code")
     title: str = Field(description=f"Overlay headline, at most {MAX_TITLE} characters")
-    text: str = Field(description=f"One or two sentences explaining why it matters, at most {MAX_TEXT} characters")
+    text: str = Field(description=f"One or two sentences explaining why it matters: aim for 180 characters, at most {MAX_TEXT}")
     evidence_keys: list[str] = Field(description="Keys of the evidence items this variant relies on")
 
 
@@ -96,9 +96,9 @@ def verify(expl: Explanation, moment: Moment, required: list[tuple[str, str]], r
         tag = f"[{v.persona}/{v.lang}]"
         body = f"{v.title} {v.text}"
         if len(v.title) > MAX_TITLE:
-            problems.append(f"{tag} title is {len(v.title)} characters, over the {MAX_TITLE} limit: cut {len(v.title) - MAX_TITLE + 10}+")
+            problems.append(f"{tag} title is {len(v.title)} characters, over the {MAX_TITLE} limit: rewrite it under {MAX_TITLE - 10}")
         if len(v.text) > MAX_TEXT:
-            problems.append(f"{tag} text is {len(v.text)} characters, over the {MAX_TEXT} limit: cut {len(v.text) - MAX_TEXT + 30}+")
+            problems.append(f"{tag} text is {len(v.text)} characters, over the {MAX_TEXT} limit: rewrite it under {MAX_TEXT - 30}")
         if not v.evidence_keys:
             problems.append(f"{tag} cites no evidence keys")
         for k in v.evidence_keys:

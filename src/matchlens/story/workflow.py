@@ -85,8 +85,8 @@ but write for your viewer.
 {RULES}- Produce exactly one variant per requested language, with persona "{persona}".
 - Write natively in the requested language (en, es, ja). Club and player names stay EXACTLY as given,
   in Latin script, even in Japanese (never transliterate them).
-- title <= 70 characters. text: one or two short sentences, about 30 words; aim for 180 characters,
-  never more than 260. Drafts over the limit are rejected, so pick one point rather than three.
+- title <= 70 characters. text: one or two short sentences; aim for 180 characters (in Japanese, about
+  110), never more than 260. Drafts over the limit are rejected, so pick one point rather than three.
 """
 
 
