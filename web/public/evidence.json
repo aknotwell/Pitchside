@@ -116,34 +116,34 @@
     }
   },
   "loadtest": {
-    "at": "2026-10-09T07:42:48Z",
+    "at": "2026-10-28T01:26:10Z",
     "matches": 10,
     "speed": 6.0,
     "peak_replicas": {
       "interpreter": 4,
-      "storyteller": 4
+      "storyteller": 6
     },
     "latency": {
       "template (hot path)": {
-        "n": 23,
-        "p50_ms": 235,
-        "p95_ms": 386,
-        "max_ms": 407,
-        "mean_ms": 254
+        "n": 58,
+        "p50_ms": 291,
+        "p95_ms": 5911,
+        "max_ms": 16053,
+        "mean_ms": 1165
       },
       "agent (warm/cold path)": {
-        "n": 5,
-        "p50_ms": 16916,
-        "p95_ms": 55386,
-        "max_ms": 55386,
-        "mean_ms": 24171
+        "n": 7,
+        "p50_ms": 15786,
+        "p95_ms": 36387,
+        "max_ms": 36387,
+        "mean_ms": 19740
       },
       "fallback": {
-        "n": 0,
-        "p50_ms": null,
-        "p95_ms": null,
-        "max_ms": null,
-        "mean_ms": null
+        "n": 1,
+        "p50_ms": 13511,
+        "p95_ms": 13511,
+        "max_ms": 13511,
+        "mean_ms": 13511
       }
     }
   },
@@ -173,7 +173,7 @@
   },
   "sources": {
     "realism": "docs/REALISM.md",
-    "loadtest": "docs/evidence/loadtest-20261009-0742.json",
+    "loadtest": "docs/evidence/loadtest-20261028-0126.json",
     "eval": "docs/evidence/eval-20261009-0832.json"
   }
 }
