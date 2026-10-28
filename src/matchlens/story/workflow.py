@@ -153,11 +153,17 @@ class Writer(Protocol):
 
 
 class StepLog:
-    """What each agent did in one ``tell()``: kept beside the workflow, never in its checkpointed state."""
+    """What each agent did in one ``tell()``. Executors checkpoint it, so a resumed run keeps the steps the killed
+    replica finished; their times are shifted so the resumed steps follow on."""
 
     def __init__(self):
         self.t0 = time.perf_counter()
         self.steps: list[dict] = []
+
+    def restore(self, steps: list[dict]) -> None:
+        if len(steps) > len(self.steps):
+            self.steps = [dict(s) for s in steps]
+            self.t0 = time.perf_counter() - max(s["t_ms"] + s["ms"] for s in steps) / 1000
 
     def add(self, step: str, outcome: str, start: float, *, persona: str | None = None, attempt: int = 0,
             detail: str | None = None) -> None:
@@ -165,6 +171,18 @@ class StepLog:
         self.steps.append({"step": step, "persona": persona, "attempt": attempt,
                            "t_ms": int(1000 * (start - self.t0)), "ms": int(1000 * (now - start)),
                            "outcome": outcome, "detail": detail[:200] if detail else None})
+
+
+class Traced(Executor):
+    """An executor that writes to the run's StepLog and carries it through checkpoints."""
+
+    steps: StepLog
+
+    async def on_checkpoint_save(self) -> dict:
+        return {"steps": self.steps.steps}
+
+    async def on_checkpoint_restore(self, state: dict) -> None:
+        self.steps.restore(state.get("steps", []))
 
 
 def _langs(segments: list[tuple[str, str]], persona: str) -> list[str]:
@@ -176,7 +194,7 @@ def _personas(segments: list[tuple[str, str]]) -> list[str]:
 
 
 # ----------------------------------------------------------------- executors
-class Editor(Executor):
+class Editor(Traced):
     """Decides what airs: always goals and recaps; otherwise at most one explanation per budget window."""
 
     def __init__(self, budget: OverlayBudget, steps: StepLog):
@@ -195,7 +213,7 @@ class Editor(Executor):
             await ctx.yield_output(Skipped(moment.moment_id, "overlay budget"))
 
 
-class Explainer(Executor):
+class Explainer(Traced):
     """Writes the shared angle. Optional: a failed or ungrounded angle is dropped, never retried."""
 
     def __init__(self, writer: Writer, segments: list[tuple[str, str]], roster: Callable[[str], set[str]],
@@ -228,7 +246,7 @@ class Explainer(Executor):
         await ctx.send_message(Brief(m, core, pending=_personas(self.segments)))
 
 
-class Personalizer(Executor):
+class Personalizer(Traced):
     """One concurrent model call per pending persona, each covering all of that persona's languages."""
 
     def __init__(self, writer: Writer, segments: list[tuple[str, str]], steps: StepLog):
@@ -265,7 +283,7 @@ class Personalizer(Executor):
         await ctx.send_message(Candidate(brief, drafts, errors, models, int(1000 * (time.perf_counter() - t0))))
 
 
-class Verifier(Executor):
+class Verifier(Traced):
     def __init__(self, segments: list[tuple[str, str]], roster: Callable[[str], set[str]], steps: StepLog,
                  max_retries: int = 1):
         super().__init__(id="verifier")
@@ -319,7 +337,7 @@ class Verifier(Executor):
             await ctx.send_message(Approved(m, Explanation(variants=accepted), sources, models, reasons))
 
 
-class Director(Executor):
+class Director(Traced):
     def __init__(self, steps: StepLog, fault: Callable[[Approved], None] | None = None):
         super().__init__(id="director")
         self.steps = steps

@@ -101,7 +101,8 @@ export default function Ops() {
   const [down, setDown] = useState(false);
   const [updated, setUpdated] = useState<number | null>(null);
   const [evidence, setEvidence] = useState<EvidencePack | "missing" | null>(null);
-  const [openRun, setOpenRun] = useState<string | null>(null);
+  // undefined until the first poll picks a run to open; null once the viewer closes it, so later polls leave it shut
+  const [openRun, setOpenRun] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -115,7 +116,7 @@ export default function Ops() {
         } catch { /* both down: keep showing the last good view */ }
       }
       if (!alive) return;
-      if (next) { setView(next); setUpdated(Date.now()); setOpenRun((o) => o ?? next.recent.find((r) => r.steps?.length)?.moment_id ?? null); }
+      if (next) { setView(next); setUpdated(Date.now()); setOpenRun((o) => (o !== undefined ? o : next.recent.find((r) => r.steps?.length)?.moment_id)); }
       setDown(!next);
     };
     load();
@@ -151,7 +152,7 @@ export default function Ops() {
             {r && <Share agent={r.agent} partial={r.partial} fallback={r.fallback} />}
           </Tile>
           <Tile label="Workflow latency, p50" value={r?.p50_ms != null ? secs(r.p50_ms) : "—"}>{r?.p95_ms != null ? `p95 ${secs(r.p95_ms)}, moment to cues written` : ""}</Tile>
-          <Tile label="Invented numbers caught" value={view?.verifier ? view.verifier.rejected.toLocaleString() : "—"}>
+          <Tile label="Drafts rejected by the verifier" value={view?.verifier ? view.verifier.rejected.toLocaleString() : "—"}>
             {view?.verifier
               ? `of ${view.verifier.checked.toLocaleString()} drafts checked · ${view.verifier.retried_ok} fixed on retry`
               : "Counted from runs that recorded their agent steps"}

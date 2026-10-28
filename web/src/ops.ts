@@ -16,10 +16,13 @@ export interface OpsView {
 }
 
 const span = (h: number) => (h % 24 === 0 && h > 24 ? `${h / 24} days` : `${h} h`);
+const day = (t: number) => new Date(t * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-export const fromScorecard = (s: Scorecard): OpsView =>
-  ({ scope: `last ${span(s.window_h)}`, runs: s.runs, verifier: s.verifier.checked ? s.verifier : null, matches: s.matches,
-     finishedWithin: `the last ${span(s.window_h)}`, chaos: s.chaos, recent: s.recent });
+export const fromScorecard = (s: Scorecard): OpsView => ({
+  scope: s.since == null ? "no runs yet" : `newest ${s.sampled.toLocaleString()} runs, back to ${day(s.since)}`,
+  runs: s.runs, verifier: s.verifier.checked ? s.verifier : null, matches: s.matches,
+  finishedWithin: `the last ${span(s.matches_window_h)}`, chaos: s.chaos, recent: s.recent,
+});
 
 /** Nearest-rank percentile; null for no values. */
 export function percentile(values: number[], p: number): number | null {

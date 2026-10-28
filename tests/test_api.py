@@ -408,28 +408,31 @@ def test_moment_detail_is_partial_while_the_storyteller_works_and_404_when_unkno
     assert client.get("/api/matches/m1/moments/m1-e9-goal").status_code == 404
 
 
-def verifier(persona, attempt, outcome):
+def verifier(persona, attempt, outcome, detail=None):
     return {"step": "verifier", "persona": persona, "attempt": attempt, "t_ms": 5, "ms": 0, "outcome": outcome,
-            "detail": None}
+            "detail": detail}
 
 
-def test_scorecard_sums_the_last_day_of_runs(client, monkeypatch):
+def test_scorecard_sums_the_newest_runs(client, monkeypatch):
     now = 1_800_000_000.0
     monkeypatch.setattr(api_mod.time, "time", lambda: now)
     editor = {"step": "editor", "persona": None, "attempt": 0, "t_ms": 0, "ms": 0, "outcome": "aired", "detail": None}
     runs = [  # newest first, as the query orders them
         {"moment_id": "a", "matchId": "m1", "kind": "goal", "source": "agent", "ms": 100, "at": now - 10,
          "resumed_from": None, "skipped": None, "personas": {"analyst": "agent"},
-         "steps": [editor, verifier("analyst", 0, "accepted"), verifier("casual", 0, "accepted")]},
+         "steps": [editor, verifier("analyst", 0, "accepted"), verifier("casual", 0, "accepted"),
+                   verifier("scout", 0, "fallback", "TimeoutError: model")]},  # no draft to check
         {"moment_id": "b", "matchId": "m2", "kind": "big_chance", "source": "partial", "ms": 300, "at": now - 20,
          "resumed_from": None, "skipped": None, "personas": {"analyst": "agent", "casual": "fallback"},
          "steps": [editor, verifier("analyst", 0, "rejected"), verifier("casual", 0, "rejected"),
-                   verifier("analyst", 1, "accepted"), verifier("casual", 1, "fallback")]},
+                   verifier("analyst", 1, "accepted"), verifier("casual", 1, "fallback", "verifier: xG 0.9 not in evidence")]},
         {"moment_id": "c", "matchId": "m1", "kind": "pressing_surge", "source": None, "ms": 1, "at": now - 30,
          "resumed_from": None, "skipped": "overlay budget", "personas": {},
          "steps": [{**editor, "outcome": "skipped", "detail": "overlay budget"}]},
         {"moment_id": "d", "matchId": "m2", "kind": "goal", "source": "fallback", "ms": 200, "at": now - 40,
          "resumed_from": "cp-1", "skipped": None, "personas": {"analyst": "fallback"}},
+        {"moment_id": "e", "matchId": "m2", "kind": "goal", "source": "duplicate", "ms": 5, "at": now - 50,
+         "resumed_from": "cp-9", "skipped": None, "personas": {}, "steps": []},  # a redelivery writes no cues
     ]
     app.state.db["runs"] = FakeContainer([{"id": "chaos", "matchId": "_ops", "armed": True, "_etag": "e"}], rows=runs)
     app.state.db["matchState"] = FakeContainer(rows=[
@@ -437,15 +440,17 @@ def test_scorecard_sums_the_last_day_of_runs(client, monkeypatch):
     r = client.get("/api/scorecard")
     body = r.json()
     assert r.headers["cache-control"] == "public, max-age=30"
-    assert body["generated_at"] == now and body["window_h"] == 168
+    assert body["generated_at"] == now and body["since"] == now - 50 and body["sampled"] == 5
+    # the resumed run's clock restarted on another replica, so it stays out of the percentiles
     assert body["runs"] == {"total": 3, "agent": 1, "partial": 1, "fallback": 1, "skipped": 1, "resumed": 1,
-                            "p50_ms": 200, "p95_ms": 300}
-    assert body["verifier"] == {"checked": 6, "rejected": 2, "retried_ok": 1}
+                            "p50_ms": 100, "p95_ms": 300}
+    assert body["verifier"] == {"checked": 6, "rejected": 3, "retried_ok": 1}
     assert body["matches"] == {"live": 1, "finished": 1}  # the quiet unended match crashed
     assert body["chaos"] == {"id": "chaos", "matchId": "_ops", "armed": True}
-    assert [x["moment_id"] for x in body["recent"]] == ["a", "b", "c", "d"]
+    assert [x["moment_id"] for x in body["recent"]] == ["a", "b", "c", "d", "e"]
     assert set(body["recent"][0]) == {"moment_id", "matchId", "kind", "source", "ms", "at", "resumed_from", "personas", "steps"}
-    assert app.state.db["runs"].params == [{"@since": now - 168 * 3600}]
+    assert app.state.db["runs"].params == [{"@n": 500}]
+    assert app.state.db["matchState"].params == [{"@since": int(now) - 168 * 3600}]
 
     for _ in range(20):
         client.get("/api/scorecard")

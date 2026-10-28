@@ -94,7 +94,9 @@ export interface StoryRun {
 export interface MomentDetail { moment: Record<string, unknown> | null; run: StoryRun | null; cues: Cue[] }
 
 export interface Scorecard {
-  generated_at: number; window_h: number;
+  generated_at: number;
+  /** The newest `sampled` runs are summed; `since` is when the oldest of them ran (null with none). */
+  since: number | null; sampled: number; matches_window_h: number;
   runs: { total: number; agent: number; partial: number; fallback: number; skipped: number; resumed: number; p50_ms: number | null; p95_ms: number | null };
   verifier: { checked: number; rejected: number; retried_ok: number };
   matches: { live: number; finished: number };

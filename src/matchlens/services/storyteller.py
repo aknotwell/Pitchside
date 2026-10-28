@@ -174,8 +174,9 @@ class StorytellerService:
             if moment.kind in ("half_time", "full_time") and cues:
                 await self._voice(moment, cues)
             await asyncio.gather(*(create_once(self.cues, c.to_doc()) for c in cues))
-            await self.runs.upsert_item({"id": f"run-{moment.moment_id}", "matchId": moment.match_id,
-                                         "type": "storyRun", "at": time.time(), **info})
+            if info["source"] != "duplicate":  # a redelivery of a finished run would wipe its record and trace
+                await self.runs.upsert_item({"id": f"run-{moment.moment_id}", "matchId": moment.match_id,
+                                             "type": "storyRun", "at": time.time(), **info})
             await receiver.complete_message(msg)
             if moment.kind == "full_time":
                 self.rosters.pop(moment.match_id, None)

@@ -10,8 +10,10 @@ export function audiences(cues: Cue[], lang: Lang): { persona: Persona; label: s
   return PERSONAS.map((p) => ({ persona: p.id, label: p.label, hint: p.hint, cue: cues.find((c) => c.persona === p.id && c.lang === lang) ?? null }));
 }
 
-/** Agent cues name their moment; a moment's own template cue (the GOAL card) carries the moment's id as its id. */
-const momentOf = (c: Cue) => c.moment_id ?? c.id;
+/** Agent cues name their moment; the GOAL data card carries its moment's id as its own id. Other data cues have none. */
+export const momentOf = (c: Cue): string | null => c.moment_id ?? (c.template === "goal" ? c.id : null);
+
+const RETRY_MS = 2000, RETRIES = 30;
 
 type Load = { status: "loading" } | { status: "ready"; detail: MomentDetail } | { status: "missing" };
 
@@ -23,17 +25,26 @@ export function WhyDrawer({ cue, persona, lang, onPersona, onClose }: {
   const drawer = useRef<HTMLElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
-  const key = cue ? `${cue.matchId}/${momentOf(cue)}` : null;
+  const moment = cue ? momentOf(cue) : null;
+  const key = cue ? `${cue.matchId}/${moment ?? cue.id}` : null;
   const open = cue !== null;
 
   useEffect(() => {
     if (!cue) return;
-    let alive = true;
+    if (!moment) { setLoad({ status: "missing" }); return; }
+    let alive = true, timer = 0;
     setLoad({ status: "loading" });
-    api.moment(cue.matchId, momentOf(cue))
-      .then((detail) => alive && setLoad(detail && Array.isArray(detail.cues) ? { status: "ready", detail } : { status: "missing" }))
-      .catch(() => alive && setLoad({ status: "missing" }));
-    return () => { alive = false; };
+    // On a live match the GOAL card airs before the agents finish: keep asking until their run lands.
+    const fetchDetail = (left: number) => api.moment(cue.matchId, moment)
+      .then((detail) => {
+        if (!alive) return;
+        if (!detail || !Array.isArray(detail.cues)) { setLoad({ status: "missing" }); return; }
+        setLoad({ status: "ready", detail });
+        if (!detail.run && left > 0) timer = window.setTimeout(() => fetchDetail(left - 1), RETRY_MS);
+      })
+      .catch(() => alive && setLoad((l) => (l.status === "ready" ? l : { status: "missing" })));
+    fetchDetail(RETRIES);
+    return () => { alive = false; clearTimeout(timer); };
   }, [key]);
 
   useEffect(() => {  // focus moves into the drawer and stays there until Escape, and then goes back where it was
@@ -101,6 +112,7 @@ export function WhyDrawer({ cue, persona, lang, onPersona, onClose }: {
           <h4>Agent trace</h4>
           {load.status === "loading" ? <div className="trace skeleton tall" />
             : detail?.run ? <AgentTrace run={detail.run} />
+            : detail?.moment ? <p className="muted pending">The agents are still writing this moment. Their run appears here when it lands.</p>
             : <p className="muted">{cue.source === "template"
                 ? "Computed straight from the event stream by code: no agent run behind this overlay."
                 : "The workflow record for this moment isn't available here."}</p>}

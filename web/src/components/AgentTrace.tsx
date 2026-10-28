@@ -91,10 +91,13 @@ export function AgentTrace({ run }: { run: StoryRun | null }) {
   const playing = cursor < layout.total;
   const bars = layout.lanes.flatMap((l) => l.bars);
   const rejected = bars.filter((b) => b.tone === "rejected");
-  const fellBack = bars.filter((b) => b.tone === "fallback" || b.tone === "failed");
+  // A template aired only where the verifier settled on one; a persona whose retry failed already says so above.
+  const fellBack = bars.filter((b) => b.step === "verifier" && b.tone === "fallback" && !rejected.some((r) => r.persona === b.persona));
+  const failed = bars.filter((b) => b.step !== "verifier" && (b.tone === "failed" || (b.step === "explainer" && b.tone === "skipped")));
   return (
     <div className="trace" ref={root}>
       {head}
+      {run.resumed_from && <p className="muted">The drill killed the replica after these steps; another replica resumed from the Cosmos DB checkpoint without calling the models again.</p>}
       <div className="tr-status" aria-live="off">
         <span>{playing ? "Replaying the recorded run" : "Recorded run"}</span>
         <span className="tr-clock">{secs(cursor)} / {secs(layout.total)}</span>
@@ -136,7 +139,7 @@ export function AgentTrace({ run }: { run: StoryRun | null }) {
         <li><i className="sw ok">✓</i>Verifier passed</li><li><i className="sw rejected">✕</i>Verifier rejected</li>
         <li><i className="sw fallback" />Template fallback</li>
       </ul>
-      {(rejected.length > 0 || fellBack.length > 0) && (
+      {(rejected.length > 0 || fellBack.length > 0 || failed.length > 0) && (
         <ul className="tr-notes">
           {rejected.map((b, i) => {
             const retried = bars.find((r) => r.step === "verifier" && r.persona === b.persona && r.attempt > b.attempt);
@@ -150,9 +153,15 @@ export function AgentTrace({ run }: { run: StoryRun | null }) {
               </li>
             );
           })}
+          {failed.map((b, i) => (
+            <li key={`x${i}`} className={`tr-note ${lit(cursor, b)}`}>
+              <b className="warn">{b.step === "explainer" ? "No shared angle: each viewer's writer started from the evidence alone" : `${personaLabel(b.persona ?? "")} writer failed`}</b>
+              <span>{b.detail ?? b.outcome}</span>
+            </li>
+          ))}
           {fellBack.map((b, i) => (
             <li key={`f${i}`} className={`tr-note ${lit(cursor, b)}`}>
-              <b className="warn">{b.persona ? personaLabel(b.persona) : STEP_VERB[b.step]}: template aired</b>
+              <b className="warn">{personaLabel(b.persona ?? "")}: template aired</b>
               <span>{b.detail ?? b.outcome}</span>
             </li>
           ))}

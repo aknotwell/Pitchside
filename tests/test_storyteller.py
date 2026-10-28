@@ -206,4 +206,8 @@ async def test_crash_mid_workflow_resumes_from_checkpoint():
     assert len(cues) == 2
     # the models were NOT called again: work resumed after the Personalizers
     assert len(writer.core_calls) == 1 and len(writer.persona_calls) == 2
-    assert trace(info) == [("director", None, 0, "ok")]  # only the steps run after the resume
+    # the killed replica's steps came back with the checkpoint, and the resumed Director follows them
+    steps = trace(info)
+    assert steps[0] == ("editor", None, 0, "aired") and steps[-1] == ("director", None, 0, "ok")
+    assert [s for s in steps if s[0] == "personalizer"] and [s for s in steps if s[0] == "verifier"]
+    assert all(a["t_ms"] + a["ms"] <= info["steps"][-1]["t_ms"] for a in info["steps"][:-1])

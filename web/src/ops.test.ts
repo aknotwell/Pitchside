@@ -45,13 +45,14 @@ describe("fromOps", () => {
 
 describe("fromScorecard", () => {
   const card = (checked: number): Scorecard => ({
-    generated_at: 0, window_h: 168,
+    generated_at: 0, since: Date.UTC(2026, 9, 20, 12) / 1000, sampled: 3, matches_window_h: 168,
     runs: { total: 3, agent: 3, partial: 0, fallback: 0, skipped: 0, resumed: 0, p50_ms: 1, p95_ms: 2 },
     verifier: { checked, rejected: 0, retried_ok: 0 }, matches: { live: 0, finished: 2 }, chaos: { armed: false }, recent: [],
   });
 
-  it("names a week-long window in days", () => {
-    expect(fromScorecard(card(5)).scope).toBe("last 7 days");
+  it("says how many runs it summed and how far back they go", () => {
+    expect(fromScorecard(card(5)).scope).toMatch(/^newest 3 runs, back to Oct 20$/);
+    expect(fromScorecard({ ...card(0), since: null, sampled: 0 }).scope).toBe("no runs yet");
     expect(fromScorecard(card(5)).finishedWithin).toBe("the last 7 days");
   });
 

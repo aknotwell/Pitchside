@@ -38,7 +38,7 @@ export function layoutTrace(steps: Step[] | undefined): TraceLayout | null {
       lane = { id, label, persona: s.persona, bars: [], rank: rank(s.step, s.persona) };
       lanes.set(id, lane);
     }
-    lane.bars.push({ ...s, start: s.t_ms, end: s.t_ms + Math.max(0, s.ms), tone: TONES[s.outcome] ?? "ok" });
+    lane.bars.push({ ...s, start: s.t_ms, end: s.t_ms + Math.max(0, s.ms), tone: TONES[s.outcome] ?? "skipped" });
   }
   const total = Math.max(1, ...steps.map((s) => s.t_ms + Math.max(0, s.ms)));
   return {
