@@ -1,4 +1,4 @@
-import type { AskAnswer, Cue, Lang, MatchState, MatchSummary, Persona } from "./types";
+import type { AskAnswer, Cue, EvidencePack, Lang, MatchState, MatchSummary, MomentDetail, Persona, Scorecard, StoryRun } from "./types";
 
 export const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
@@ -27,5 +27,13 @@ export const api = {
     }),
   replays: () => j<{ replays: { matchId: string; home: string; away: string; score: { h: number; a: number }; at: number }[] }>("/api/replays"),
   chaos: () => j<{ armed: boolean }>("/api/chaos", { method: "POST" }),
-  ops: () => j<{ chaos: { armed: boolean; lastFiredAt?: number }; runs: Record<string, unknown>[] }>("/api/ops"),
+  ops: () => j<{ chaos: { armed: boolean; lastFiredAt?: number }; runs: StoryRun[] }>("/api/ops"),
+  moment: (matchId: string, momentId: string) =>
+    j<MomentDetail>(`/api/matches/${encodeURIComponent(matchId)}/moments/${encodeURIComponent(momentId)}`),
+  scorecard: () => j<Scorecard>("/api/scorecard"),
+  /** A static file of the web app itself, not the API. */
+  evidence: () => fetch(`${import.meta.env.BASE_URL}evidence.json`).then((r) => {
+    if (!r.ok) throw new Error(`${r.status}`);
+    return r.json() as Promise<EvidencePack>;
+  }),
 };
