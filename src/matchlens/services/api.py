@@ -428,6 +428,10 @@ async def voice(match_id: str, cue_id: str, request: Request, lang: str = Query(
     name = f"{match_id}/voice-{cue_id}-{lang}.mp3"
     if not AUDIO_NAME.match(name):
         raise HTTPException(400, "bad cue id")
+    try:  # a cached call outlives its cue, which expires with the cues container's TTL
+        return await stream_blob(request, "audio", name, "voice", VOICE_HEADERS)
+    except HTTPException:
+        pass
     try:
         cue = await request.app.state.db["cues"].read_item(cue_id, partition_key=match_id)
     except ResourceNotFoundError as exc:
@@ -435,10 +439,6 @@ async def voice(match_id: str, cue_id: str, request: Request, lang: str = Query(
     said = spoken(cue, lang)
     if said is None:
         raise HTTPException(404, "cue is not announced")
-    try:
-        return await stream_blob(request, "audio", name, "voice", VOICE_HEADERS)
-    except HTTPException:
-        pass
     text, call = said
     speech = request.app.state.speech
     if not speech.enabled:
@@ -448,7 +448,10 @@ async def voice(match_id: str, cue_id: str, request: Request, lang: str = Query(
     except Exception as exc:
         log.warning("voice failed for %s/%s: %s", match_id, cue_id, exc)
         raise HTTPException(503, "speech unavailable") from exc
-    await request.app.state.blobs.get_blob_client("audio", name).upload_blob(audio, overwrite=True)
+    try:
+        await request.app.state.blobs.get_blob_client("audio", name).upload_blob(audio, overwrite=True)
+    except Exception as exc:
+        log.warning("voice cache write failed for %s: %s", name, exc)
     return Response(audio, headers=VOICE_HEADERS)
 
 

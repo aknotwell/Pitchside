@@ -28,7 +28,7 @@ CALLS: dict[str, Call] = {
                   "ja": "イエローカード。{team}の{player}。"}),
     "substitution": Call({"en": "{team} substitution. {on} comes on for {off}.",
                           "es": "Cambio en {team}. Entra {on}, sale {off}.",
-                          "ja": "{team}、選手交代。{on}が入り、{off}が下がります。"}),
+                          "ja": "{team}、選手交代。{off}に代わって{on}が入ります。"}),
 }
 
 
@@ -40,5 +40,6 @@ def spoken(cue: dict, lang: str) -> tuple[str, Call] | None:
     d = cue.get("data") or {}
     team = str(cue.get("title", "")).split("·")[-1].strip()
     score = str(d.get("score", "")).replace("–", TO.get(lang, " to "))
+    player = d.get("player", "")
     return call.phrases.get(lang, call.phrases["en"]).format(
-        team=team, player=d.get("player", ""), on=d.get("on", ""), off=d.get("off", ""), score=score), call
+        team=team, player=team if player in ("", "?") else player, on=d.get("on", ""), off=d.get("off", ""), score=score), call

@@ -58,6 +58,8 @@ export const preempts = (playing: Call | null, incoming: Call[]) => !!playing &&
 
 const SILENCE = "data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";  // 10 ms, to unlock the element inside a click
 const CLIPS_KEPT = 40;
+/** A failed fetch is tried again after this long, not every frame while the server is down. */
+const RETRY_MS = 3000;
 const wallNow = () => performance.now() / 1000;
 
 /**
@@ -73,7 +75,9 @@ export function useAnnouncer(live: Live, source: string | null, lang: Lang, on: 
   const clip = (url: string) => {
     let p = s.clips.get(url);
     if (!p) {
-      p = fetch(url).then((r) => (r.ok ? r.blob() : null)).then((b) => b && URL.createObjectURL(b)).catch(() => null);
+      const q: Promise<string | null> = fetch(url).then((r) => (r.ok ? r.blob() : null)).then((b) => b && URL.createObjectURL(b)).catch(() => null);
+      void q.then((u) => { if (!u) setTimeout(() => { if (s.clips.get(url) === q) s.clips.delete(url); }, RETRY_MS); });
+      p = q;
       s.clips.set(url, p);
       for (const [old, q] of s.clips) {
         if (s.clips.size <= CLIPS_KEPT) break;
@@ -118,7 +122,8 @@ export function useAnnouncer(live: Live, source: string | null, lang: Lang, on: 
   useEffect(() => {  // sound left on from a last visit needs this page's first gesture before it can play
     if (!on) return;
     window.addEventListener("pointerdown", unlock, { once: true });
-    return () => window.removeEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => { window.removeEventListener("pointerdown", unlock); window.removeEventListener("keydown", unlock); };
   }, [on]);
 
   useEffect(() => {
