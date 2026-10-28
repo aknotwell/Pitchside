@@ -207,11 +207,10 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .replay-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 6px 8px 6px 12px; font-size: 13px; animation: fade .3s ease-out; }
 .rb-tag { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 6px; }
-.rb-what { font-weight: 700; } .rb-msg { color: var(--muted); }
-.rb-go { margin-left: auto; font-size: 13px; padding: 4px 12px; border-color: #5a2a2a; background: #22151a; }
+.rb-what { font-weight: 700; } .rb-msg { flex: 1; color: var(--muted); }
+.rb-go { font-size: 13px; padding: 4px 12px; border-color: #5a2a2a; background: #22151a; }
 .rb-go:hover { border-color: var(--danger); } .rb-go .onair { color: var(--danger); }
 .rb-x { border: 0; background: none; color: var(--muted); font-size: 16px; padding: 2px 6px; }
-.rb-msg:last-of-type:not(:has(+ .rb-go)) { margin-right: auto; }
 
 .ops-page header h1 small { color: var(--muted); }
 .ops-pulse { font-size: 12px; color: var(--muted); } .ops-pulse span { color: var(--accent); }
