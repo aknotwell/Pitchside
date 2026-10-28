@@ -68,6 +68,10 @@ async def run(story, m):
     return await story.tell(m)
 
 
+def trace(info):
+    return [(s["step"], s["persona"], s["attempt"], s["outcome"]) for s in info["steps"]]
+
+
 async def test_agent_path_produces_verified_cues():
     writer = FakeWriter(writes_good)
     story = Storyteller(writer, roster=lambda _: set(), segments=SEGS)
@@ -97,6 +101,17 @@ async def test_retry_then_success():
     cues, info = await run(Storyteller(FakeWriter(persona_fn), roster=lambda _: set(), segments=SEGS), moment())
     assert info["source"] == "agent" and len(calls) == 4
     assert all(any("2.2" in p for p in fb) for fb in calls[2:])  # feedback reached each persona
+    assert trace(info) == [
+        ("editor", None, 0, "aired"), ("explainer", None, 0, "ok"),
+        ("personalizer", "analyst", 0, "ok"), ("personalizer", "casual", 0, "ok"),
+        ("verifier", "analyst", 0, "rejected"), ("verifier", "casual", 0, "rejected"),
+        ("personalizer", "analyst", 1, "ok"), ("personalizer", "casual", 1, "ok"),
+        ("verifier", "analyst", 1, "accepted"), ("verifier", "casual", 1, "accepted"),
+        ("director", None, 0, "ok")]
+    steps = info["steps"]
+    assert "2.2" in steps[4]["detail"] and steps[2]["detail"] == "fake-model"
+    assert all(0 <= a["t_ms"] <= b["t_ms"] for a, b in zip(steps, steps[1:], strict=False))
+    assert info["started_at"] > 1e9
 
 
 async def test_one_bad_persona_only_retries_and_falls_back_alone():
@@ -107,6 +122,9 @@ async def test_one_bad_persona_only_retries_and_falls_back_alone():
     assert [p for p, *_ in writer.persona_calls].count("analyst") == 1  # accepted first time, never redone
     assert [p for p, *_ in writer.persona_calls].count("casual") == 2   # one retry, then its template
     assert info["source"] == "partial" and info["personas"] == {"analyst": "agent", "casual": "fallback"}
+    assert [t for t in trace(info) if t[0] == "verifier"] == [
+        ("verifier", "analyst", 0, "accepted"), ("verifier", "casual", 0, "rejected"),
+        ("verifier", "casual", 1, "fallback")]
     by = {c.persona: c for c in cues}
     assert by["analyst"].data["model"] == "fake-model" and by["casual"].data["fallbackReason"].startswith("verifier")
 
@@ -167,6 +185,7 @@ async def test_overlay_budget_skips_minor_moments():
     _, first = await run(story, moment(clock=3000))
     _, second = await run(story, moment(clock=3020))
     assert first["cues"] == 2 and second["skipped"] == "overlay budget"
+    assert trace(second) == [("editor", None, 0, "skipped")] and second["steps"][0]["detail"] == "overlay budget"
 
 
 async def test_crash_mid_workflow_resumes_from_checkpoint():
@@ -187,3 +206,8 @@ async def test_crash_mid_workflow_resumes_from_checkpoint():
     assert len(cues) == 2
     # the models were NOT called again: work resumed after the Personalizers
     assert len(writer.core_calls) == 1 and len(writer.persona_calls) == 2
+    # the killed replica's steps came back with the checkpoint, and the resumed Director follows them
+    steps = trace(info)
+    assert steps[0] == ("editor", None, 0, "aired") and steps[-1] == ("director", None, 0, "ok")
+    assert [s for s in steps if s[0] == "personalizer"] and [s for s in steps if s[0] == "verifier"]
+    assert all(a["t_ms"] + a["ms"] <= info["steps"][-1]["t_ms"] for a in info["steps"][:-1])

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
+/** Starts a simulated match; fast demo speeds play shorter halves. */
+export const startMatch = (speed: number) => api.start(speed, speed >= 10 ? 15 : 45);
+
 export function Producer() {
   const [msg, setMsg] = useState<string>("");
   const [ops, setOps] = useState<Awaited<ReturnType<typeof api.ops>> | null>(null);
@@ -17,7 +20,7 @@ export function Producer() {
   const start = async () => {
     setMsg("Starting a match…");
     try {
-      const r = await api.start(speed, speed >= 10 ? 15 : 45);
+      const r = await startMatch(speed);
       setMsg(`Simulator job started (seed ${r.seed}). It appears in the match list in ~30 s.`);
     } catch (e) { setMsg(`Could not start: ${(e as Error).message}`); }
   };
@@ -28,7 +31,7 @@ export function Producer() {
 
   return (
     <div className="producer">
-      <h3>Producer console</h3>
+      <h3>Producer console <a className="ops-link" href="?page=ops">Ops scorecard →</a></h3>
       <div className="row">
         <label>Speed <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
           {[1, 5, 10, 20].map((s) => <option key={s} value={s}>{s}×</option>)}

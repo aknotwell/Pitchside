@@ -70,3 +70,50 @@ export interface Reflex {
 }
 
 export interface AskAnswer { answer: string; tools: string[]; model: string; reflex?: Reflex }
+
+/** How a story run ended: every viewer written by the agents, some of them, none (templates), or a repeat. */
+export type RunSource = "agent" | "partial" | "fallback" | "duplicate";
+export type StepName = "editor" | "explainer" | "personalizer" | "verifier" | "director";
+export type StepOutcome = "aired" | "skipped" | "ok" | "dropped" | "failed" | "accepted" | "rejected" | "fallback";
+
+/** One executor's turn in a story run. `t_ms` is from the run's start; personalizers for different
+ *  viewers overlap, and a verifier rejection is followed by `attempt` 1 for the same persona. */
+export interface Step {
+  step: StepName; persona: string | null; attempt: number; t_ms: number; ms: number;
+  outcome: StepOutcome; detail: string | null;
+}
+
+/** The agent workflow's record of one moment. Runs recorded before steps were kept have none. */
+export interface StoryRun {
+  moment_id: string; matchId: string; kind: string; source: RunSource | null; ms: number | null; at: number;
+  started_at?: number; resumed_from: string | null; skipped: string | null;
+  personas?: Record<string, string>; steps?: Step[];
+}
+
+/** Everything behind one moment: the run and every viewer and language variant it aired. */
+export interface MomentDetail { moment: Record<string, unknown> | null; run: StoryRun | null; cues: Cue[] }
+
+export interface Scorecard {
+  generated_at: number;
+  /** The newest `sampled` runs are summed; `since` is when the oldest of them ran (null with none). */
+  since: number | null; sampled: number; matches_window_h: number;
+  runs: { total: number; agent: number; partial: number; fallback: number; skipped: number; resumed: number; p50_ms: number | null; p95_ms: number | null };
+  verifier: { checked: number; rejected: number; retried_ok: number };
+  matches: { live: number; finished: number };
+  chaos: { armed: boolean; lastFiredAt?: number };
+  recent: StoryRun[];
+}
+
+export interface Latency { n: number; p50_ms: number | null; p95_ms: number | null; max_ms: number | null; mean_ms: number | null }
+
+/** The static evidence pack the judges' page reads: calibration, load test and eval gate results. */
+export interface EvidencePack {
+  realism: {
+    heldout: { matches: number; rows: { metric: string; real: string; synthetic: string; error: string }[] };
+    test: { rows: { metric: string; real: string; interval: string; synthetic: string; inside: boolean }[] };
+  };
+  loadtest: { at: string; matches: number; speed: number; peak_replicas: Record<string, number>; latency: Record<string, Latency> };
+  /** `thresholds` names each check's gate; files written before it was added lack it. */
+  eval: { at: string; summary: Record<string, number>; checks: Record<string, boolean>; thresholds?: Record<string, number> };
+  sources: Record<string, string>;
+}
