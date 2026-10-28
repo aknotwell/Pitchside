@@ -14,6 +14,7 @@ import { ReplayBanner } from "./components/ReplayBanner";
 import { WhyDrawer } from "./components/WhyDrawer";
 import { BROADCAST_DELAY_S, useLiveMatch } from "./live";
 import { useReplay } from "./replay";
+import { useAnnouncer } from "./announcer";
 import { LAB_META, labSample } from "./lab";
 import type { Cue, Lang, MatchState, MatchSummary, Persona } from "./types";
 import { PERSONAS } from "./types";
@@ -37,6 +38,7 @@ const CAMS: { id: CamMode; label: string }[] = [
 ];
 
 const LANGS: { id: Lang; label: string }[] = [{ id: "en", label: "EN" }, { id: "es", label: "ES" }, { id: "ja", label: "日本語" }];
+const SOUND_KEY = "matchlens.sound";
 
 export default function App() {
   const params = new URLSearchParams(location.search);
@@ -76,6 +78,13 @@ function Main({ params }: { params: URLSearchParams }) {
   const replayFeed = useReplay(replayId, persona, lang, finalState, opened);
   const live = replayId ? replayFeed : liveFeed;
   const { paused, controls } = live;
+  const [sound, setSound] = useState(() => localStorage.getItem(SOUND_KEY) === "on");
+  const unlock = useAnnouncer(live, replayId ?? matchId, lang, sound);
+  const toggleSound = () => {
+    if (!sound) unlock();
+    localStorage.setItem(SOUND_KEY, sound ? "off" : "on");
+    setSound(!sound);
+  };
 
   useEffect(() => {
     api.replays().then((r) => setReplays(r.replays)).catch(() => {});
@@ -140,6 +149,8 @@ function Main({ params }: { params: URLSearchParams }) {
         <div className="seg" role="group" aria-label="Language">
           {LANGS.map((l) => <button key={l.id} className={lang === l.id ? "on" : ""} onClick={() => setLang(l.id)}>{l.label}</button>)}
         </div>
+        <button className={sound ? "sound on" : "sound"} aria-pressed={sound} title="Read goals, cards, substitutions and recaps aloud"
+                onClick={toggleSound}>{sound ? "🔊 Sound on" : "🔇 Sound off"}</button>
         <a className="hdr-link" href="?page=ops">Ops scorecard</a>
       </header>
       <main>

@@ -15,7 +15,8 @@ agent resumes exactly where it stopped.
 1. Open the **live demo**. It picks the live match, or, when none is live, opens the newest replay
    a few seconds before its first goal. **Start a live match** in the banner kicks off a new one.
 2. Toggle **Fan / Analyst / Academy / Scout** and **EN / ES / 日本語**. Every overlay changes register
-   and language.
+   and language. Turn on **🔊 Sound on** to hear goals, cards and substitutions called aloud in
+   that language by Azure AI Speech, timed to the frame the overlay airs.
 3. Click **Why?** on any overlay. **Behind this moment** shows the same moment as
    written for all four viewers, then replays the recorded agent run: Editor,
    Explainer, one Personalizer per viewer in parallel, the Verifier (a rejected
